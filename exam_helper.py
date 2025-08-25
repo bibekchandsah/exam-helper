@@ -119,6 +119,45 @@ class ExamHelper:
                     self.llm_client.working_models = []
                 else:
                     self.llm_client.client = None
+        
+        # Refresh response model dropdown if working models changed
+        self.refresh_response_model_dropdown()
+    
+    def refresh_response_model_dropdown(self):
+        """Refresh the response model dropdown with updated working models"""
+        if hasattr(self, 'response_model_combo'):
+            # Update response models with new working models
+            self.response_models = {}
+            
+            # Add OpenAI models from config
+            working_models = self.config.get('working_models', [])
+            if not working_models:
+                working_models = ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini']
+            
+            for model in working_models:
+                self.response_models[f"OpenAI {model}"] = f"openai_{model}"
+            
+            # Add Gemini models
+            gemini_models = {
+                'Gemini 1.5 Flash': 'gemini_flash',
+                'Gemini 1.5 Pro': 'gemini_pro'
+            }
+            self.response_models.update(gemini_models)
+            
+            # Update dropdown values
+            self.response_model_combo['values'] = list(self.response_models.keys())
+            
+            # Ensure current selection is still valid
+            current_selection = self.selected_response_model.get()
+            if current_selection not in self.response_models:
+                # Set to current openai_model from config
+                current_model = self.config.get('openai_model', 'gpt-4o')
+                display_model = f"OpenAI {current_model}"
+                if display_model in self.response_models:
+                    self.selected_response_model.set(display_model)
+                elif self.response_models:
+                    # Fallback to first available model
+                    self.selected_response_model.set(list(self.response_models.keys())[0])
     
     def center_window(self, window, width, height):
         """Center a window on the screen"""
@@ -339,15 +378,25 @@ class ExamHelper:
         model_header_frame = tk.Frame(model_section, bg=self.colors['bg_secondary'])
         model_header_frame.pack(pady=(12, 8), fill=tk.X, padx=15)
         
-        model_header = tk.Label(model_header_frame, text="🤖 Image Recognition Model", 
+        model_header = tk.Label(model_header_frame, text="🤖 Model Selection", 
                                font=('Segoe UI', 11, 'bold'),
                                fg=self.colors['text_primary'], 
                                bg=self.colors['bg_secondary'])
         model_header.pack(side=tk.LEFT)
         
-        # Model selector dropdown
+        # Model selector dropdown frame - two columns
         model_selector_frame = tk.Frame(model_section, bg=self.colors['bg_secondary'])
         model_selector_frame.pack(fill=tk.X, padx=15, pady=(0, 12))
+        
+        # Left column - Image Recognition Model
+        image_model_frame = tk.Frame(model_selector_frame, bg=self.colors['bg_secondary'])
+        image_model_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        
+        image_model_label = tk.Label(image_model_frame, text="📸 Image Recognition Model", 
+                                    font=('Segoe UI', 9, 'bold'),
+                                    fg=self.colors['text_secondary'], 
+                                    bg=self.colors['bg_secondary'])
+        image_model_label.pack(anchor=tk.W, pady=(0, 5))
         
         # Available image models
         self.image_models = {
@@ -361,27 +410,87 @@ class ExamHelper:
         # Create styled combobox
         self.setup_model_selector_style()
         
+        image_combo_frame = tk.Frame(image_model_frame, bg=self.colors['bg_secondary'])
+        image_combo_frame.pack(fill=tk.X)
+        
         self.selected_image_model = tk.StringVar(value=self.config.get('selected_image_model', 'OpenAI GPT-4o'))
         self.image_model_combo = ttk.Combobox(
-            model_selector_frame,
+            image_combo_frame,
             textvariable=self.selected_image_model,
             values=list(self.image_models.keys()),
             state='readonly',
             style='Modern.TCombobox',
-            font=('Segoe UI', 10),
-            width=25
+            font=('Segoe UI', 9),
+            width=22
         )
-        self.image_model_combo.pack(side=tk.LEFT, padx=(0, 10))
+        self.image_model_combo.pack(side=tk.LEFT, padx=(0, 8))
         
-        # Model status indicator
-        self.model_status_label = tk.Label(model_selector_frame, text="✅ Ready", 
-                                          font=('Segoe UI', 9),
-                                          fg=self.colors['success'], 
-                                          bg=self.colors['bg_secondary'])
-        self.model_status_label.pack(side=tk.LEFT)
+        # Image model status indicator
+        self.image_model_status_label = tk.Label(image_combo_frame, text="✅ Ready", 
+                                               font=('Segoe UI', 8),
+                                               fg=self.colors['success'], 
+                                               bg=self.colors['bg_secondary'])
+        self.image_model_status_label.pack(side=tk.LEFT)
         
-        # Bind model selection change
+        # Right column - AI Response Model
+        response_model_frame = tk.Frame(model_selector_frame, bg=self.colors['bg_secondary'])
+        response_model_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        response_model_label = tk.Label(response_model_frame, text="💬 AI Response Model", 
+                                       font=('Segoe UI', 9, 'bold'),
+                                       fg=self.colors['text_secondary'], 
+                                       bg=self.colors['bg_secondary'])
+        response_model_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Available response models (OpenAI + Gemini)
+        self.response_models = {}
+        
+        # Add OpenAI models from config
+        working_models = self.config.get('working_models', [])
+        if not working_models:
+            working_models = ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini']
+        
+        for model in working_models:
+            self.response_models[f"OpenAI {model}"] = f"openai_{model}"
+        
+        # Add Gemini models
+        gemini_models = {
+            'Gemini 1.5 Flash': 'gemini_flash',
+            'Gemini 1.5 Pro': 'gemini_pro'
+        }
+        self.response_models.update(gemini_models)
+        
+        response_combo_frame = tk.Frame(response_model_frame, bg=self.colors['bg_secondary'])
+        response_combo_frame.pack(fill=tk.X)
+        
+        self.selected_response_model = tk.StringVar(value=self.config.get('openai_model', 'gpt-4o'))
+        # Convert current model to display format
+        current_model = self.config.get('openai_model', 'gpt-4o')
+        display_model = f"OpenAI {current_model}"
+        if display_model in self.response_models:
+            self.selected_response_model.set(display_model)
+        
+        self.response_model_combo = ttk.Combobox(
+            response_combo_frame,
+            textvariable=self.selected_response_model,
+            values=list(self.response_models.keys()),
+            state='readonly',
+            style='Modern.TCombobox',
+            font=('Segoe UI', 9),
+            width=22
+        )
+        self.response_model_combo.pack(side=tk.LEFT, padx=(0, 8))
+        
+        # Response model status indicator
+        self.response_model_status_label = tk.Label(response_combo_frame, text="✅ Ready", 
+                                                  font=('Segoe UI', 8),
+                                                  fg=self.colors['success'], 
+                                                  bg=self.colors['bg_secondary'])
+        self.response_model_status_label.pack(side=tk.LEFT)
+        
+        # Bind model selection changes
         self.image_model_combo.bind('<<ComboboxSelected>>', self.on_image_model_change)
+        self.response_model_combo.bind('<<ComboboxSelected>>', self.on_response_model_change)
         
         # Modern manual input section
         input_section = tk.Frame(main_frame, bg=self.colors['bg_secondary'], relief='flat', bd=0)
@@ -880,8 +989,9 @@ class ExamHelper:
             self.live_screen_btn.config(text="🔴 Live Screen")
             self.live_screen_status_label.config(text="Live: Off", foreground='red')
         
-        # Initialize image model status
+        # Initialize model statuses
         self.on_image_model_change()
+        self.on_response_model_change()
         
 
     def audio_scan_loop(self):
@@ -921,14 +1031,23 @@ class ExamHelper:
                         # Update status
                         self.root.after(0, lambda: self.update_status("Processing question..."))
                         
-                        # Get answer from LLM (text-based) - try OpenAI first, fallback to Gemini, then Perplexity
+                        # Get answer from selected response model
                         response_mode = self.config.get('response_mode', 'short')
-                        if self.llm_client.client:
+                        selected_model = self.selected_response_model.get()
+                        model_key = self.response_models.get(selected_model)
+                        
+                        if model_key and model_key.startswith('openai') and self.llm_client.client:
                             answer = self.llm_client.get_answer(question, response_mode)
-                        elif self.gemini_client.api_key:
+                        elif model_key and model_key.startswith('gemini') and self.gemini_client.api_key:
                             answer = self.gemini_client.get_text_answer(question, response_mode)
                         else:
-                            answer = self.perplexity_client.get_text_answer(question, response_mode)
+                            # Fallback logic
+                            if self.llm_client.client:
+                                answer = self.llm_client.get_answer(question, response_mode)
+                            elif self.gemini_client.api_key:
+                                answer = self.gemini_client.get_text_answer(question, response_mode)
+                            else:
+                                answer = self.perplexity_client.get_text_answer(question, response_mode)
                         
                         # Display answer
                         self.root.after(0, lambda: self.display_answer(source, question, answer))
@@ -1235,20 +1354,58 @@ class ExamHelper:
         # Update model status based on API key availability
         if model_key.startswith('openai'):
             if self.config.get('openai_api_key'):
-                self.model_status_label.config(text="✅ Ready", fg=self.colors['success'])
+                self.image_model_status_label.config(text="✅ Ready", fg=self.colors['success'])
             else:
-                self.model_status_label.config(text="❌ No API Key", fg=self.colors['error'])
+                self.image_model_status_label.config(text="❌ No API Key", fg=self.colors['error'])
         elif model_key.startswith('gemini'):
             if self.config.get('gemini_api_key'):
-                self.model_status_label.config(text="✅ Ready", fg=self.colors['success'])
+                self.image_model_status_label.config(text="✅ Ready", fg=self.colors['success'])
             else:
-                self.model_status_label.config(text="❌ No API Key", fg=self.colors['error'])
+                self.image_model_status_label.config(text="❌ No API Key", fg=self.colors['error'])
         
         # Save selected model to config
         self.config['selected_image_model'] = selected_model
         self.save_config()
         
         self.logger.info(f"Image model changed to: {selected_model}")
+    
+    def on_response_model_change(self, event=None):
+        """Handle AI response model selection change"""
+        selected_model = self.selected_response_model.get()
+        model_key = self.response_models.get(selected_model)
+        
+        # Update model status based on API key availability
+        if model_key.startswith('openai'):
+            if self.config.get('openai_api_key'):
+                self.response_model_status_label.config(text="✅ Ready", fg=self.colors['success'])
+            else:
+                self.response_model_status_label.config(text="❌ No API Key", fg=self.colors['error'])
+            
+            # Extract actual model name for OpenAI
+            actual_model = model_key.replace('openai_', '')
+            self.config['openai_model'] = actual_model
+            
+        elif model_key.startswith('gemini'):
+            if self.config.get('gemini_api_key'):
+                self.response_model_status_label.config(text="✅ Ready", fg=self.colors['success'])
+            else:
+                self.response_model_status_label.config(text="❌ No API Key", fg=self.colors['error'])
+            
+            # For Gemini models, we might need to update gemini client model
+            # This would require updating the gemini_module to support model selection
+            
+        # Save config
+        self.save_config()
+        
+        # Update the model label in the header
+        if hasattr(self, 'model_label'):
+            if model_key.startswith('openai'):
+                actual_model = model_key.replace('openai_', '')
+                self.model_label.config(text=f"🤖 {actual_model}")
+            elif model_key.startswith('gemini'):
+                self.model_label.config(text=f"🤖 {selected_model}")
+        
+        self.logger.info(f"Response model changed to: {selected_model}")
     
     def capture_screen_with_selected_model(self):
         """Capture screen and analyze with the selected image model"""
@@ -1771,6 +1928,10 @@ class SettingsWindow:
                 
                 # Update config with working models
                 self.config['working_models'] = working_models
+                
+                # Refresh main UI response model dropdown if it exists
+                if hasattr(self, 'save_callback'):
+                    self.save_callback()  # This will trigger a refresh in the main UI
                 
                 self.model_status_label.config(text=f"✓ Found {len(working_models)} models", foreground='green')
                 

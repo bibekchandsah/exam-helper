@@ -270,14 +270,7 @@ class ExamHelper:
                                  command=self.toggle_response_mode, **button_style)
         self.mode_btn.pack(side=tk.LEFT, padx=(0, 4))
         
-        # OCR toggle button
-        self.ocr_btn = tk.Button(control_row, text="🔍 OCR", 
-                                bg=self.colors['bg_tertiary'], 
-                                fg=self.colors['text_primary'],
-                                activebackground=self.colors['warning'],
-                                activeforeground='white',
-                                command=self.toggle_ocr_scanning, **button_style)
-        self.ocr_btn.pack(side=tk.LEFT, padx=(0, 4))
+
         
         # Audio toggle button
         self.audio_btn = tk.Button(control_row, text="🎤 Audio", 
@@ -288,13 +281,13 @@ class ExamHelper:
                                   command=self.toggle_audio_scanning, **button_style)
         self.audio_btn.pack(side=tk.LEFT, padx=(0, 4))
         
-        # Capture Screen button
-        self.capture_btn = tk.Button(control_row, text="📸 Capture", 
+        # Capture Screen button (merged functionality)
+        self.capture_btn = tk.Button(control_row, text="📸 Capture Screen", 
                                     bg=self.colors['accent'], 
                                     fg='white',
                                     activebackground=self.colors['accent_hover'],
                                     activeforeground='white',
-                                    command=self.capture_screen_now, **button_style)
+                                    command=self.capture_screen_with_selected_model, **button_style)
         self.capture_btn.pack(side=tk.LEFT, padx=(0, 4))
         
         # OCR Screen button
@@ -314,15 +307,6 @@ class ExamHelper:
                                         activeforeground='white',
                                         command=self.toggle_live_screen, **button_style)
         self.live_screen_btn.pack(side=tk.LEFT, padx=(0, 4))
-        
-        # Send Screen button
-        self.send_screen_btn = tk.Button(control_row, text="📤 Send Screen", 
-                                        bg=self.colors['success'], 
-                                        fg='white',
-                                        activebackground='#00f5c4',
-                                        activeforeground='white',
-                                        command=self.send_screen_to_openai, **button_style)
-        self.send_screen_btn.pack(side=tk.LEFT, padx=(0, 4))
         
         # Always on top modern checkbox
         self.always_on_top_var = tk.BooleanVar(value=self.config.get('always_on_top', True))
@@ -344,6 +328,58 @@ class ExamHelper:
             bd=0
         )
         self.always_on_top_cb.pack()
+        
+        # Image Model Selector Section
+        model_section = tk.Frame(main_frame, bg=self.colors['bg_secondary'], relief='flat', bd=0)
+        model_section.pack(fill=tk.X, pady=(0, 15))
+        
+        # Model selector header
+        model_header_frame = tk.Frame(model_section, bg=self.colors['bg_secondary'])
+        model_header_frame.pack(pady=(12, 8), fill=tk.X, padx=15)
+        
+        model_header = tk.Label(model_header_frame, text="🤖 Image Recognition Model", 
+                               font=('Segoe UI', 11, 'bold'),
+                               fg=self.colors['text_primary'], 
+                               bg=self.colors['bg_secondary'])
+        model_header.pack(side=tk.LEFT)
+        
+        # Model selector dropdown
+        model_selector_frame = tk.Frame(model_section, bg=self.colors['bg_secondary'])
+        model_selector_frame.pack(fill=tk.X, padx=15, pady=(0, 12))
+        
+        # Available image models
+        self.image_models = {
+            'OpenAI GPT-4o': 'openai_gpt4o',
+            'OpenAI GPT-4o-mini': 'openai_gpt4o_mini', 
+            'OpenAI GPT-4 Turbo': 'openai_gpt4_turbo',
+            'Gemini Pro Vision': 'gemini_pro_vision',
+            'Gemini Flash': 'gemini_flash'
+        }
+        
+        # Create styled combobox
+        self.setup_model_selector_style()
+        
+        self.selected_image_model = tk.StringVar(value='OpenAI GPT-4o')
+        self.image_model_combo = ttk.Combobox(
+            model_selector_frame,
+            textvariable=self.selected_image_model,
+            values=list(self.image_models.keys()),
+            state='readonly',
+            style='Modern.TCombobox',
+            font=('Segoe UI', 10),
+            width=25
+        )
+        self.image_model_combo.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Model status indicator
+        self.model_status_label = tk.Label(model_selector_frame, text="✅ Ready", 
+                                          font=('Segoe UI', 9),
+                                          fg=self.colors['success'], 
+                                          bg=self.colors['bg_secondary'])
+        self.model_status_label.pack(side=tk.LEFT)
+        
+        # Bind model selection change
+        self.image_model_combo.bind('<<ComboboxSelected>>', self.on_image_model_change)
         
         # Modern manual input section
         input_section = tk.Frame(main_frame, bg=self.colors['bg_secondary'], relief='flat', bd=0)
@@ -761,6 +797,26 @@ class ExamHelper:
         style.map('Modern.TButton',
                  background=[('active', self.colors['accent_hover']),
                            ('pressed', self.colors['accent'])])
+    
+    def setup_model_selector_style(self):
+        """Setup styling for the model selector combobox"""
+        style = ttk.Style()
+        
+        # Configure modern combobox style
+        style.configure('Modern.TCombobox',
+                       fieldbackground=self.colors['bg_tertiary'],
+                       background=self.colors['bg_tertiary'],
+                       foreground=self.colors['text_primary'],
+                       borderwidth=0,
+                       focuscolor='none',
+                       arrowcolor=self.colors['text_secondary'],
+                       font=('Segoe UI', 10))
+        
+        style.map('Modern.TCombobox',
+                 fieldbackground=[('readonly', self.colors['bg_tertiary']),
+                                ('focus', self.colors['bg_tertiary'])],
+                 background=[('readonly', self.colors['bg_tertiary'])],
+                 foreground=[('readonly', self.colors['text_primary'])])
         
         # Configure modern frame style
         style.configure('Modern.TFrame',
@@ -809,12 +865,6 @@ class ExamHelper:
         answer_thread.start()
         
         # Initialize button states based on config
-        if self.config.get('ocr_enabled', True):
-            self.start_ocr_scanning()
-        else:
-            self.ocr_btn.config(text="Start OCR")
-            self.ocr_status_label.config(text="OCR: Off", foreground='red')
-            
         if self.config.get('audio_enabled', True):
             self.start_audio_scanning()
         else:
@@ -828,26 +878,10 @@ class ExamHelper:
             self.live_screen_btn.config(text="🔴 Live Screen")
             self.live_screen_status_label.config(text="Live: Off", foreground='red')
         
-    def ocr_scan_loop(self):
-        """Continuously scan screen for text questions"""
-        # Check if OCR is available
-        if not self.ocr_capture.tesseract_available:
-            self.logger.warning("OCR scanning disabled: Tesseract not available")
-            self.root.after(0, lambda: self.update_status("OCR disabled - Tesseract not found"))
-            return
-            
-        while self.running and self.ocr_running:
-            try:
-                question = self.ocr_capture.capture_screen_text()
-                if question and self.is_likely_question(question):
-                    self.question_queue.put(('OCR', question))
-                    self.logger.info(f"OCR Question detected: {question[:50]}...")
-                    
-            except Exception as e:
-                self.logger.error(f"OCR scan error: {e}")
-                
-            time.sleep(self.config.get('scan_interval', 3))
-            
+        # Initialize image model status
+        self.on_image_model_change()
+        
+
     def audio_scan_loop(self):
         """Continuously listen for audio questions"""
         while self.running and self.audio_running:
@@ -981,41 +1015,7 @@ class ExamHelper:
         mode_text = "Detailed" if new_mode == 'detailed' else "Short"
         self.mode_btn.config(text=f"Mode: {mode_text}")
         
-    def toggle_ocr_scanning(self):
-        """Toggle OCR scanning on/off"""
-        if self.ocr_running:
-            self.stop_ocr_scanning()
-        else:
-            self.start_ocr_scanning()
-            
-    def start_ocr_scanning(self):
-        """Start OCR scanning"""
-        if not self.ocr_capture.tesseract_available:
-            self.update_status("OCR unavailable - Tesseract not found")
-            messagebox.showwarning("OCR Error", "Tesseract OCR is not installed or not found in PATH.\nPlease install Tesseract OCR to use this feature.")
-            return
-            
-        if not self.ocr_running:
-            self.ocr_running = True
-            self.ocr_thread = threading.Thread(target=self.ocr_scan_loop, daemon=True)
-            self.ocr_thread.start()
-            self.ocr_btn.config(text="⏹️ Stop OCR", bg=self.colors['success'])
-            self.ocr_status_label.config(text="OCR", fg=self.colors['success'])
-            self.config['ocr_enabled'] = True
-            self.save_config()
-            self.update_status("OCR scanning started")
-            self.logger.info("OCR scanning started")
-            
-    def stop_ocr_scanning(self):
-        """Stop OCR scanning"""
-        if self.ocr_running:
-            self.ocr_running = False
-            self.ocr_btn.config(text="🔍 OCR", bg=self.colors['bg_tertiary'])
-            self.ocr_status_label.config(text="OCR", fg=self.colors['error'])
-            self.config['ocr_enabled'] = False
-            self.save_config()
-            self.update_status("OCR scanning stopped")
-            self.logger.info("OCR scanning stopped")
+
             
     def toggle_audio_scanning(self):
         """Toggle Audio scanning on/off"""
@@ -1057,7 +1057,14 @@ class ExamHelper:
             
     def start_live_screen(self):
         """Start Live Screen scanning"""
-        if not self.gemini_client.api_key:
+        # Check if selected model has API key configured
+        selected_model = self.selected_image_model.get()
+        model_key = self.image_models.get(selected_model)
+        
+        if model_key.startswith('openai') and not self.config.get('openai_api_key'):
+            messagebox.showwarning("API Error", "OpenAI API key is not configured.\nPlease set your API key in settings.")
+            return
+        elif model_key.startswith('gemini') and not self.config.get('gemini_api_key'):
             messagebox.showwarning("API Error", "Gemini API key is not configured.\nPlease set your API key in settings.")
             return
             
@@ -1084,29 +1091,38 @@ class ExamHelper:
             self.logger.info("Live screen scanning stopped")
             
     def live_screen_loop(self):
-        """Continuously capture and analyze screen using Gemini"""
+        """Continuously capture and analyze screen using selected model"""
         while self.running and self.live_screen_running:
             try:
+                # Get selected model info
+                selected_model = self.selected_image_model.get()
+                model_key = self.image_models.get(selected_model)
+                
                 # Capture screenshot excluding our window
                 base64_image = self.screenshot_capture.capture_and_encode(
                     exclude_window_title=self.root.title(),
                     resize=True,
-                    format='PNG'
+                    format='JPEG' if model_key.startswith('openai') else 'PNG'
                 )
                 
                 if base64_image:
-                    self.logger.info("Live screen captured successfully")
+                    self.logger.info(f"Live screen captured successfully for {selected_model}")
                     
                     # Get response mode
                     response_mode = self.config.get('response_mode', 'short')
                     
-                    # Send to Gemini Vision API
-                    answer = self.gemini_client.analyze_image(base64_image, response_mode)
+                    # Send to appropriate API based on selected model
+                    if model_key.startswith('openai'):
+                        answer = self._analyze_with_openai(base64_image, model_key, response_mode)
+                    elif model_key.startswith('gemini'):
+                        answer = self._analyze_with_gemini(base64_image, response_mode)
+                    else:
+                        answer = "Unsupported model selected."
                     
                     # Only display if there's meaningful content (not just "I can see..." responses)
                     if self.is_meaningful_response(answer):
                         # Display the result
-                        self.root.after(0, lambda: self.display_answer("Live Screen", "Continuous Analysis", answer))
+                        self.root.after(0, lambda: self.display_answer("Live Screen", f"{selected_model} Analysis", answer))
                     
                 else:
                     self.logger.error("Failed to capture live screen")
@@ -1145,156 +1161,7 @@ class ExamHelper:
         
         return any(indicator in response_lower for indicator in question_indicators)
             
-    def capture_screen_now(self):
-        """Capture screen immediately and send to Gemini Vision API"""
-        if not self.gemini_client.api_key:
-            messagebox.showwarning("API Error", "Gemini API key is not configured.\nPlease set your API key in settings.")
-            return
-            
-        self.update_status("Capturing screen...")
-        self.capture_btn.config(text="📸 Capturing...", state='disabled')
-        
-        # Run capture in a separate thread to avoid blocking UI
-        capture_thread = threading.Thread(target=self._perform_screenshot_capture, daemon=True)
-        capture_thread.start()
-        
-    def _perform_screenshot_capture(self):
-        """Perform the actual screenshot capture and Gemini Vision API processing"""
-        try:
-            # Capture screenshot excluding our window
-            self.root.after(0, lambda: self.update_status("Taking screenshot..."))
-            
-            base64_image = self.screenshot_capture.capture_and_encode(
-                exclude_window_title=self.root.title(),
-                resize=True,
-                format='PNG'
-            )
-            
-            if base64_image:
-                self.root.after(0, lambda: self.update_status("Screenshot captured - analyzing with Gemini AI..."))
-                self.logger.info("Screenshot captured successfully")
-                
-                # Get response mode
-                response_mode = self.config.get('response_mode', 'short')
-                
-                # Send to Gemini Vision API
-                answer = self.gemini_client.analyze_image(base64_image, response_mode)
-                
-                # Display the result
-                self.root.after(0, lambda: self.display_answer("Screenshot", "Image Analysis", answer))
-                self.root.after(0, lambda: self.update_status("Screenshot analysis complete"))
-                
-            else:
-                self.root.after(0, lambda: self.update_status("Failed to capture screenshot"))
-                self.logger.error("Failed to capture or encode screenshot")
-                
-        except Exception as e:
-            self.logger.error(f"Screenshot capture error: {e}")
-            self.root.after(0, lambda: self.update_status("Screenshot capture failed"))
-            
-        finally:
-            # Re-enable the button
-            self.root.after(0, lambda: self.capture_btn.config(text="📸 Capture Screen", state='normal'))
-    
-    def send_screen_to_openai(self):
-        """Capture screen and send to OpenAI Vision API"""
-        if not self.config.get('openai_api_key'):
-            messagebox.showwarning("API Error", "OpenAI API key is not configured.\nPlease set your API key in settings.")
-            return
-            
-        self.update_status("Capturing screen for OpenAI...")
-        self.send_screen_btn.config(text="📤 Sending...", state='disabled')
-        
-        # Run capture in a separate thread to avoid blocking UI
-        capture_thread = threading.Thread(target=self._perform_openai_screen_send, daemon=True)
-        capture_thread.start()
-        
-    def _perform_openai_screen_send(self):
-        """Perform the actual screenshot capture and OpenAI Vision API processing"""
-        try:
-            import requests
-            
-            # Capture screenshot excluding our window
-            self.root.after(0, lambda: self.update_status("Taking screenshot..."))
-            
-            base64_image = self.screenshot_capture.capture_and_encode(
-                exclude_window_title=self.root.title(),
-                resize=True,
-                format='JPEG'  # Use JPEG for better compression
-            )
-            
-            if base64_image:
-                self.root.after(0, lambda: self.update_status("Screenshot captured - sending to OpenAI..."))
-                self.logger.info("Screenshot captured successfully for OpenAI")
-                
-                # Prepare the API request
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.config.get('openai_api_key')}"
-                }
-                
-                payload = {
-                    "model": self.config.get('openai_model', 'gpt-4o'),
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "Please look over this image and find the answer if it asks any question answer them all, dont over explain. Answer whats required by the question. If this is just a screenshot explain it for user"
-                                },
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/jpeg;base64,{base64_image}"
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    "max_tokens": 1000
-                }
-                
-                # Send request to OpenAI
-                response = requests.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=30
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    answer = result['choices'][0]['message']['content']
-                    
-                    # Display the result
-                    self.root.after(0, lambda: self.display_answer("Screen Analysis", "OpenAI Vision", answer))
-                    self.root.after(0, lambda: self.update_status("OpenAI screen analysis complete"))
-                    
-                else:
-                    error_msg = f"OpenAI API error: {response.status_code}"
-                    try:
-                        error_detail = response.json().get('error', {}).get('message', 'Unknown error')
-                        error_msg += f" - {error_detail}"
-                    except:
-                        pass
-                    
-                    self.logger.error(error_msg)
-                    self.root.after(0, lambda: self.update_status("OpenAI API request failed"))
-                    self.root.after(0, lambda: messagebox.showerror("API Error", error_msg))
-                
-            else:
-                self.root.after(0, lambda: self.update_status("Failed to capture screenshot"))
-                self.logger.error("Failed to capture or encode screenshot for OpenAI")
-                
-        except Exception as e:
-            self.logger.error(f"OpenAI screen send error: {e}")
-            self.root.after(0, lambda: self.update_status("OpenAI screen send failed"))
-            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to send screen to OpenAI: {str(e)}"))
-            
-        finally:
-            # Re-enable the button
-            self.root.after(0, lambda: self.send_screen_btn.config(text="📤 Send Screen", state='normal'))
+
             
     def ocr_screen_now(self):
         """Capture screen and extract text content using Gemini OCR"""
@@ -1357,6 +1224,218 @@ class ExamHelper:
         status_text = "enabled" if always_on_top else "disabled"
         self.update_status(f"Always on top {status_text}")
         self.logger.info(f"Always on top {status_text}")
+    
+    def on_image_model_change(self, event=None):
+        """Handle image model selection change"""
+        selected_model = self.selected_image_model.get()
+        model_key = self.image_models.get(selected_model)
+        
+        # Update model status based on API key availability
+        if model_key.startswith('openai'):
+            if self.config.get('openai_api_key'):
+                self.model_status_label.config(text="✅ Ready", fg=self.colors['success'])
+            else:
+                self.model_status_label.config(text="❌ No API Key", fg=self.colors['error'])
+        elif model_key.startswith('gemini'):
+            if self.config.get('gemini_api_key'):
+                self.model_status_label.config(text="✅ Ready", fg=self.colors['success'])
+            else:
+                self.model_status_label.config(text="❌ No API Key", fg=self.colors['error'])
+        
+        self.logger.info(f"Image model changed to: {selected_model}")
+    
+    def capture_screen_with_selected_model(self):
+        """Capture screen and analyze with the selected image model"""
+        selected_model = self.selected_image_model.get()
+        model_key = self.image_models.get(selected_model)
+        
+        # Check if API key is available for selected model
+        if model_key.startswith('openai') and not self.config.get('openai_api_key'):
+            messagebox.showwarning("API Error", "OpenAI API key is not configured.\nPlease set your API key in settings.")
+            return
+        elif model_key.startswith('gemini') and not self.config.get('gemini_api_key'):
+            messagebox.showwarning("API Error", "Gemini API key is not configured.\nPlease set your API key in settings.")
+            return
+            
+        self.update_status(f"Capturing screen with {selected_model}...")
+        self.capture_btn.config(text="📸 Processing...", state='disabled')
+        
+        # Run capture in a separate thread to avoid blocking UI
+        capture_thread = threading.Thread(target=self._perform_model_screen_capture, args=(model_key,), daemon=True)
+        capture_thread.start()
+    
+    def _perform_model_screen_capture(self, model_key):
+        """Perform the actual screenshot capture and analysis with selected model"""
+        try:
+            # Capture screenshot excluding our window
+            self.root.after(0, lambda: self.update_status("Taking screenshot..."))
+            
+            base64_image = self.screenshot_capture.capture_and_encode(
+                exclude_window_title=self.root.title(),
+                resize=True,
+                format='JPEG' if model_key.startswith('openai') else 'PNG'
+            )
+            
+            if base64_image:
+                selected_model_name = self.selected_image_model.get()
+                self.root.after(0, lambda: self.update_status(f"Screenshot captured - analyzing with {selected_model_name}..."))
+                self.logger.info(f"Screenshot captured successfully for {selected_model_name}")
+                
+                # Get response mode
+                response_mode = self.config.get('response_mode', 'short')
+                
+                # Send to appropriate API based on model
+                if model_key.startswith('openai'):
+                    answer = self._analyze_with_openai(base64_image, model_key, response_mode)
+                elif model_key.startswith('gemini'):
+                    answer = self._analyze_with_gemini(base64_image, response_mode)
+                else:
+                    answer = "Unsupported model selected."
+                
+                # Display the result
+                self.root.after(0, lambda: self.display_answer("Screen Analysis", selected_model_name, answer))
+                self.root.after(0, lambda: self.update_status(f"{selected_model_name} analysis complete"))
+                
+            else:
+                self.root.after(0, lambda: self.update_status("Failed to capture screenshot"))
+                self.logger.error("Failed to capture or encode screenshot")
+                
+        except Exception as e:
+            self.logger.error(f"Model screen capture error: {e}")
+            self.root.after(0, lambda: self.update_status("Screen capture failed"))
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to analyze screen: {str(e)}"))
+            
+        finally:
+            # Re-enable the button
+            self.root.after(0, lambda: self.capture_btn.config(text="📸 Capture Screen", state='normal'))
+    
+    def _analyze_with_openai(self, base64_image, model_key, response_mode):
+        """Analyze image with OpenAI Vision API"""
+        try:
+            import requests
+            
+            # Map model keys to actual OpenAI model names
+            openai_models = {
+                'openai_gpt4o': 'gpt-4o',
+                'openai_gpt4o_mini': 'gpt-4o-mini',
+                'openai_gpt4_turbo': 'gpt-4-turbo'
+            }
+            
+            model_name = openai_models.get(model_key, 'gpt-4o')
+            
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.config.get('openai_api_key')}"
+            }
+            
+            prompt = """
+**Role:**
+You are an **exam & coding assistant**. Answer concisely and accurately.
+
+**Rules:**
+
+1. **MCQs** → Solve, pick the correct option. If no option matches: reply **“No matched answer found.”** No explanations.
+2. **Programming** → Output only code, placed where `"write your code here"` is indicated.
+3. **Answer Format** → Prefix with question number. Example: `Q1: C 3/7`, `Q2: print("Hello")`.
+4. **Non-Exam Images** → If not exam/coding related, briefly describe the image.
+5. **Multiple Questions** → Answer sequentially (Q1, Q2, Q3…).
+            """
+            if response_mode == 'detailed':
+                prompt += """
+**Role:**
+You are an **exam-solving and coding assistant**. Your job is to analyze images and provide the most accurate, concise answers for exam-style and coding questions. You specialize in:
+
+* Arithmetic Aptitude
+* Data Interpretation
+* Verbal Ability
+* Logical Reasoning
+* Verbal Reasoning
+* Nonverbal Reasoning
+* Programming questions (code writing only)
+
+**Task Instructions:**
+
+1. **Multiple Choice Questions (MCQs):**
+
+   * Solve the question logically using reasoning, calculations, or analysis.
+   * Choose the **best correct option** from the given choices.
+   * If no option matches your solution, reply with: **“No matched answer found.”**
+   * Do **not** explain—only provide the direct answer.
+
+2. **Programming Questions:**
+
+   * Provide only the code solution.
+   * Place it exactly where the question specifies: **“write your code here.”**
+
+3. **Answer Formatting:**
+
+   * Always prefix each response with the **question number**.
+   * Examples:
+
+     * `Q1: B 3/4`
+     * `Q2: print("Hello World")`
+
+4. **Non-Exam Images:**
+
+   * If the image does not contain exam-related or coding questions, briefly describe what you see in the image.
+
+5. **General Rules:**
+
+   * Be accurate, concise, and logical.
+   * Do not provide explanations unless the image is unrelated to exams or programming.
+   * For multiple questions in one image, answer sequentially: Q1, Q2, Q3…
+                """
+            
+            payload = {
+                "model": model_name,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": prompt
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "max_tokens": 10000 if response_mode == 'detailed' else 1000
+            }
+            
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result['choices'][0]['message']['content']
+            else:
+                error_msg = f"OpenAI API error: {response.status_code}"
+                try:
+                    error_detail = response.json().get('error', {}).get('message', 'Unknown error')
+                    error_msg += f" - {error_detail}"
+                except:
+                    pass
+                return f"Error: {error_msg}"
+                
+        except Exception as e:
+            return f"OpenAI analysis error: {str(e)}"
+    
+    def _analyze_with_gemini(self, base64_image, response_mode):
+        """Analyze image with Gemini Vision API"""
+        try:
+            return self.gemini_client.analyze_image(base64_image, response_mode)
+        except Exception as e:
+            return f"Gemini analysis error: {str(e)}"
         
     def get_scanning_status(self):
         """Get current scanning status"""

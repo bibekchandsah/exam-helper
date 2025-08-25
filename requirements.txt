@@ -1,0 +1,13 @@
+pillow>=9.0.0
+pytesseract>=0.3.10
+pyaudio>=0.2.11
+speechrecognition>=3.10.0
+openai>=1.0.0
+google-generativeai>=0.3.0
+pynput>=1.7.6
+pygetwindow>=0.0.9
+pywin32>=306
+numpy>=1.21.0
+opencv-python>=4.5.0
+psutil>=5.8.0
+requests>=2.25.0

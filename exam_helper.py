@@ -84,8 +84,11 @@ class ExamHelper:
                 'response_mode': 'short',  # 'short' or 'detailed'
                 'always_on_top': True,
                 'openai_model': 'gpt-3.5-turbo',
+                'gemini_model': 'gemini-1.5-flash',
                 'working_models': [],
+                'working_gemini_models': [],
                 'selected_image_model': 'OpenAI GPT-4o',  # Default image recognition model
+                'use_custom_prompt': False,  # Whether to use custom prompt or hardcoded prompt
                 'custom_image_prompt': "What's in this image? Please analyze and describe what you see."  # Default prompt
             }
             self.save_config()
@@ -1491,9 +1494,18 @@ class ExamHelper:
                 "Authorization": f"Bearer {self.config.get('openai_api_key')}"
             }
             
-            # Use custom prompt from config or default
-            prompt = self.config.get('custom_image_prompt', "What's in this image? Please analyze and describe what you see.")
-            if response_mode == 'detailed':
+            # Use custom prompt only if checkbox is enabled, otherwise use hardcoded prompt
+            if self.config.get('use_custom_prompt', False):
+                prompt = self.config.get('custom_image_prompt', "What's in this image? Please analyze and describe what you see.")
+            else:
+                # Use hardcoded prompt from prompt.txt
+                try:
+                    with open('prompt.txt', 'r', encoding='utf-8') as f:
+                        prompt = f.read().strip()
+                except FileNotFoundError:
+                    prompt = "What's in this image? Please analyze and describe what you see."
+            
+            if response_mode == 'detailed' and not self.config.get('use_custom_prompt', False):
                 prompt += """
 **Role:**
 You are an **exam-solving and coding assistant**. Your job is to analyze images and provide the most accurate, concise answers for exam-style and coding questions. You specialize in:
@@ -1588,8 +1600,10 @@ You are an **exam-solving and coding assistant**. Your job is to analyze images 
     def _analyze_with_gemini(self, base64_image, response_mode):
         """Analyze image with Gemini Vision API"""
         try:
-            # Use custom prompt from config
-            custom_prompt = self.config.get('custom_image_prompt')
+            # Use custom prompt only if checkbox is enabled
+            custom_prompt = None
+            if self.config.get('use_custom_prompt', False):
+                custom_prompt = self.config.get('custom_image_prompt')
             return self.gemini_client.analyze_image(base64_image, response_mode, custom_prompt)
         except Exception as e:
             return f"Gemini analysis error: {str(e)}"
@@ -1756,14 +1770,15 @@ class SettingsWindow:
         perplexity_key_entry = ttk.Entry(main_frame, textvariable=self.perplexity_key_var, show='*', width=50)
         perplexity_key_entry.pack(fill=tk.X, pady=(0, 10))
         
-        # OpenAI Model Selection
+        # Model Selection Section
         model_frame = ttk.Frame(main_frame)
         model_frame.pack(fill=tk.X, pady=(0, 10))
         
+        # OpenAI Model Selection
         ttk.Label(model_frame, text="OpenAI Model:").pack(anchor=tk.W)
         
-        model_selection_frame = ttk.Frame(model_frame)
-        model_selection_frame.pack(fill=tk.X, pady=(5, 0))
+        openai_model_frame = ttk.Frame(model_frame)
+        openai_model_frame.pack(fill=tk.X, pady=(5, 0))
         
         # Model dropdown
         self.model_var = tk.StringVar(value=self.config.get('openai_model', 'gpt-3.5-turbo'))
@@ -1773,18 +1788,43 @@ class SettingsWindow:
         if not working_models:
             working_models = ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini']
         
-        self.model_combo = ttk.Combobox(model_selection_frame, textvariable=self.model_var, 
+        self.model_combo = ttk.Combobox(openai_model_frame, textvariable=self.model_var, 
                                        values=working_models, state='readonly', width=25)
         self.model_combo.pack(side=tk.LEFT, padx=(0, 10))
         
-        # Scan models button
-        self.scan_btn = ttk.Button(model_selection_frame, text="🔍 Scan Models", 
+        # Scan OpenAI models button
+        self.scan_btn = ttk.Button(openai_model_frame, text="🔍 Scan OpenAI Models", 
                                   command=self.scan_working_models)
-        self.scan_btn.pack(side=tk.LEFT)
+        self.scan_btn.pack(side=tk.LEFT, padx=(0, 10))
         
-        # Model status label
-        self.model_status_label = ttk.Label(model_selection_frame, text="", foreground='green')
-        self.model_status_label.pack(side=tk.LEFT, padx=(10, 0))
+        # OpenAI Model status label
+        self.model_status_label = ttk.Label(openai_model_frame, text="", foreground='green')
+        self.model_status_label.pack(side=tk.LEFT)
+        
+        # Gemini Model Selection
+        ttk.Label(model_frame, text="Gemini Models:").pack(anchor=tk.W, pady=(10, 0))
+        
+        gemini_model_frame = ttk.Frame(model_frame)
+        gemini_model_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        # Gemini model dropdown
+        self.gemini_model_var = tk.StringVar(value=self.config.get('gemini_model', 'gemini-1.5-flash'))
+        
+        # Available Gemini models
+        gemini_models = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro', 'gemini-pro-vision']
+        
+        self.gemini_model_combo = ttk.Combobox(gemini_model_frame, textvariable=self.gemini_model_var, 
+                                              values=gemini_models, state='readonly', width=25)
+        self.gemini_model_combo.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Scan Gemini models button
+        self.scan_gemini_btn = ttk.Button(gemini_model_frame, text="🔍 Scan Gemini Models", 
+                                         command=self.scan_gemini_models)
+        self.scan_gemini_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Gemini Model status label
+        self.gemini_model_status_label = ttk.Label(gemini_model_frame, text="", foreground='green')
+        self.gemini_model_status_label.pack(side=tk.LEFT)
         
         # Scan interval
         ttk.Label(main_frame, text="Scan Interval (seconds):").pack(anchor=tk.W)
@@ -1808,9 +1848,17 @@ class SettingsWindow:
         self.live_screen_enabled_var = tk.BooleanVar(value=self.config.get('live_screen_enabled', False))
         ttk.Checkbutton(main_frame, text="Enable Live Screen on Startup", variable=self.live_screen_enabled_var).pack(anchor=tk.W, pady=5)
         
-        # Custom Image Prompt
+        # Custom Image Prompt Section
         ttk.Label(main_frame, text="Custom Image Analysis Prompt:").pack(anchor=tk.W, pady=(15, 0))
-        prompt_hint = ttk.Label(main_frame, text="💡 This prompt will be used for image analysis. Leave default for general use.", 
+        
+        # Checkbox to enable/disable custom prompt
+        self.use_custom_prompt_var = tk.BooleanVar(value=self.config.get('use_custom_prompt', False))
+        custom_prompt_cb = ttk.Checkbutton(main_frame, text="Use Custom Prompt (when unchecked, uses hardcoded prompt)", 
+                                          variable=self.use_custom_prompt_var,
+                                          command=self.toggle_custom_prompt_state)
+        custom_prompt_cb.pack(anchor=tk.W, pady=(5, 5))
+        
+        prompt_hint = ttk.Label(main_frame, text="💡 This prompt will be used for image analysis when checkbox is enabled.", 
                                font=('Segoe UI', 8), foreground='gray')
         prompt_hint.pack(anchor=tk.W, pady=(0, 5))
         
@@ -1831,6 +1879,9 @@ class SettingsWindow:
         # Pack text widget and scrollbar
         self.custom_prompt_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         prompt_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Set initial state based on checkbox
+        self.toggle_custom_prompt_state()
         
         # Buttons
         button_frame = ttk.Frame(main_frame)
@@ -1990,6 +2041,108 @@ class SettingsWindow:
         close_btn = tk.Button(dialog, text="Close", command=dialog.destroy)
         close_btn.pack(pady=10)
     
+    def scan_gemini_models(self):
+        """Scan for working Gemini models"""
+        api_key = self.gemini_key_var.get().strip()
+        if not api_key:
+            messagebox.showwarning("Warning", "Please enter your Gemini API key first.")
+            return
+            
+        # Start scanning in a separate thread to avoid blocking the UI
+        import threading
+        scan_thread = threading.Thread(target=self._perform_gemini_scan, args=(api_key,))
+        scan_thread.daemon = True
+        scan_thread.start()
+    
+    def _perform_gemini_scan(self, api_key):
+        """Perform the actual Gemini model scanning in a separate thread"""
+        try:
+            # Update UI on main thread
+            self.window.after(0, lambda: self.scan_gemini_btn.config(text="🔍 Scanning...", state='disabled'))
+            self.window.after(0, lambda: self.gemini_model_status_label.config(text="Testing Gemini models...", foreground='orange'))
+            
+            # Import here to avoid circular imports
+            from gemini_module import GeminiClient
+            
+            # Create temporary client to test models
+            temp_client = GeminiClient(api_key)
+            
+            # Test available Gemini models
+            test_models = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro', 'gemini-pro-vision']
+            working_models = []
+            
+            for i, model in enumerate(test_models):
+                try:
+                    # Update progress
+                    progress_text = f"Testing {i+1}/{len(test_models)}: {model}..."
+                    self.window.after(0, lambda text=progress_text: self.gemini_model_status_label.config(text=text, foreground='orange'))
+                    
+                    # Test the model by making a simple request
+                    import google.generativeai as genai
+                    genai.configure(api_key=api_key)
+                    test_model = genai.GenerativeModel(model)
+                    response = test_model.generate_content("Hello")
+                    
+                    if response.text:
+                        working_models.append(model)
+                    
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    if "authentication" in error_msg or "api key" in error_msg:
+                        self.window.after(0, lambda: self._gemini_scan_complete([], "Gemini API key authentication failed"))
+                        return
+                    # Continue with other models for other errors
+            
+            # Complete the scan
+            self.window.after(0, lambda: self._gemini_scan_complete(working_models, None))
+            
+        except Exception as e:
+            error_msg = f"Failed to scan Gemini models: {str(e)}"
+            self.window.after(0, lambda: self._gemini_scan_complete([], error_msg))
+    
+    def _gemini_scan_complete(self, working_models, error_msg):
+        """Handle Gemini scan completion on the main thread"""
+        try:
+            if error_msg:
+                self.gemini_model_status_label.config(text="✗ Scan failed", foreground='red')
+                messagebox.showerror("Error", error_msg)
+            elif working_models:
+                # Update dropdown with working models
+                self.gemini_model_combo['values'] = working_models
+                
+                # Set current model if it's in the working list, otherwise set first working model
+                current_model = self.gemini_model_var.get()
+                if current_model not in working_models:
+                    self.gemini_model_var.set(working_models[0])
+                
+                # Update config with working Gemini models
+                self.config['working_gemini_models'] = working_models
+                self.config['gemini_model'] = self.gemini_model_var.get()
+                
+                self.gemini_model_status_label.config(text=f"✓ Found {len(working_models)} models", foreground='green')
+                
+                messagebox.showinfo("Success", f"Found {len(working_models)} working Gemini models:\n\n" + 
+                                  "\n".join(working_models))
+            else:
+                self.gemini_model_status_label.config(text="✗ No models found", foreground='red')
+                messagebox.showerror("Error", "No working Gemini models found. Please check your API key.")
+                
+        except Exception as e:
+            self.gemini_model_status_label.config(text="✗ Error", foreground='red')
+            messagebox.showerror("Error", f"Error completing Gemini scan: {str(e)}")
+        
+        finally:
+            self.scan_gemini_btn.config(text="🔍 Scan Gemini Models", state='normal')
+    
+    def toggle_custom_prompt_state(self):
+        """Toggle the state of custom prompt text widget based on checkbox"""
+        if self.use_custom_prompt_var.get():
+            # Enable custom prompt
+            self.custom_prompt_text.config(state='normal', bg='white', fg='black')
+        else:
+            # Disable custom prompt (use hardcoded)
+            self.custom_prompt_text.config(state='disabled', bg='#f0f0f0', fg='gray')
+    
     def save_settings(self):
         """Save settings and close window"""
         try:
@@ -2002,6 +2155,8 @@ class SettingsWindow:
             self.config['audio_enabled'] = self.audio_enabled_var.get()
             self.config['live_screen_enabled'] = self.live_screen_enabled_var.get()
             self.config['openai_model'] = self.model_var.get()
+            self.config['gemini_model'] = self.gemini_model_var.get()
+            self.config['use_custom_prompt'] = self.use_custom_prompt_var.get()
             self.config['custom_image_prompt'] = self.custom_prompt_text.get('1.0', tk.END).strip()
             
             self.save_callback()

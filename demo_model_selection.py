@@ -12,10 +12,35 @@ class ModelSelectionDemo:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("OpenAI Model Selection Demo")
-        self.root.geometry("500x400")
+        
+        # Set window icon
+        try:
+            if os.path.exists("icon.png"):
+                icon_image = tk.PhotoImage(file="icon.png")
+                self.root.iconphoto(True, icon_image)
+            elif os.path.exists("icon.ico"):
+                self.root.iconbitmap("icon.ico")
+        except:
+            pass  # Icon loading failed, continue without icon
+        
+        # Center the window
+        self.center_window(500, 400)
         
         self.load_config()
         self.setup_gui()
+    
+    def center_window(self, width, height):
+        """Center the window on the screen"""
+        # Get screen dimensions
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        
+        # Calculate position coordinates
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+        
+        # Set window geometry
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
         
     def load_config(self):
         """Load configuration"""

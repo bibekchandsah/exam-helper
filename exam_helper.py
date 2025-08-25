@@ -117,11 +117,41 @@ class ExamHelper:
                     self.llm_client.working_models = []
                 else:
                     self.llm_client.client = None
+    
+    def center_window(self, window, width, height):
+        """Center a window on the screen"""
+        # Get screen dimensions
+        screen_width = window.winfo_screenwidth()
+        screen_height = window.winfo_screenheight()
+        
+        # Calculate position coordinates
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+        
+        # Set window geometry
+        window.geometry(f"{width}x{height}+{x}+{y}")
+    
     def setup_gui(self):
         """Setup the modern GUI window"""
         self.root = tk.Tk()
         self.root.title("✨ Exam Helper Pro")
-        self.root.geometry("735x740")
+        
+        # Set window icon
+        try:
+            # For PNG files, use iconphoto directly
+            if os.path.exists("icon.png"):
+                icon_image = tk.PhotoImage(file="icon.png")
+                self.root.iconphoto(True, icon_image)
+            elif os.path.exists("icon.ico"):
+                # Use iconbitmap only for .ico files
+                self.root.iconbitmap("icon.ico")
+        except Exception as e:
+            self.logger.warning(f"Could not load icon: {e}")
+        
+        # Set window size and center it
+        window_width = 735
+        window_height = 740
+        self.center_window(self.root, window_width, window_height)
         
         # Modern dark theme colors
         self.colors = {
@@ -676,6 +706,34 @@ class ExamHelper:
                                  cursor='hand2',
                                  command=self.show_shortcuts)
         shortcuts_btn.pack(side=tk.LEFT)
+        
+        # Developer credit link positioned in absolute bottom right corner
+        developer_link = tk.Label(main_frame, 
+                                 text="Developed by Bibek", 
+                                 font=('Segoe UI', 8),
+                                 fg=self.colors['text_secondary'], 
+                                 bg=self.colors['bg_primary'],
+                                 cursor='hand2')
+        developer_link.place(relx=1.0, rely=1.0, anchor='se', x=-10, y=-5)
+        
+        # Add click handler to open website
+        def open_developer_website(event):
+            import webbrowser
+            webbrowser.open("https://www.bibekchandsah.com.np/")
+        
+        developer_link.bind('<Button-1>', open_developer_website)
+        
+        # Add hover effects for the developer link
+        def on_dev_link_enter(event):
+            developer_link.config(fg=self.colors['accent'], 
+                                 font=('Segoe UI', 8, 'underline'))
+        
+        def on_dev_link_leave(event):
+            developer_link.config(fg=self.colors['text_secondary'], 
+                                 font=('Segoe UI', 8))
+        
+        developer_link.bind('<Enter>', on_dev_link_enter)
+        developer_link.bind('<Leave>', on_dev_link_leave)
         
     def setup_modern_style(self):
         """Setup modern styling for ttk widgets"""
@@ -1292,11 +1350,37 @@ class SettingsWindow:
         
         self.window = tk.Toplevel(parent)
         self.window.title("Settings")
-        self.window.geometry("450x520")
+        
+        # Set window icon
+        try:
+            if os.path.exists("icon.png"):
+                icon_image = tk.PhotoImage(file="icon.png")
+                self.window.iconphoto(True, icon_image)
+            elif os.path.exists("icon.ico"):
+                self.window.iconbitmap("icon.ico")
+        except:
+            pass  # Icon loading failed, continue without icon
+        
+        # Center the window
+        self.center_window(450, 520)
+        
         self.window.transient(parent)
         self.window.grab_set()
         
         self.setup_settings_gui()
+    
+    def center_window(self, width, height):
+        """Center the settings window on the screen"""
+        # Get screen dimensions
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+        
+        # Calculate position coordinates
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+        
+        # Set window geometry
+        self.window.geometry(f"{width}x{height}+{x}+{y}")
         
     def setup_settings_gui(self):
         """Setup settings GUI"""
@@ -1503,6 +1587,14 @@ class SettingsWindow:
         dialog.transient(self.window)
         dialog.grab_set()
         
+        # Center the dialog on screen
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
         # Header
         header_label = tk.Label(dialog, text=f"Found {len(models)} Working Models", 
                                font=('Arial', 12, 'bold'))
@@ -1550,7 +1642,20 @@ class ShortcutsWindow:
     def __init__(self, parent):
         self.window = tk.Toplevel(parent)
         self.window.title("Keyboard Shortcuts")
-        self.window.geometry("530x550")
+        
+        # Set window icon
+        try:
+            if os.path.exists("icon.png"):
+                icon_image = tk.PhotoImage(file="icon.png")
+                self.window.iconphoto(True, icon_image)
+            elif os.path.exists("icon.ico"):
+                self.window.iconbitmap("icon.ico")
+        except:
+            pass  # Icon loading failed, continue without icon
+        
+        # Center the window
+        self.center_window(530, 550)
+        
         self.window.transient(parent)
         self.window.grab_set()
         
@@ -1558,6 +1663,19 @@ class ShortcutsWindow:
         self.window.resizable(True, True)
         
         self.setup_shortcuts_gui()
+    
+    def center_window(self, width, height):
+        """Center the shortcuts window on the screen"""
+        # Get screen dimensions
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+        
+        # Calculate position coordinates
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+        
+        # Set window geometry
+        self.window.geometry(f"{width}x{height}+{x}+{y}")
         
     def setup_shortcuts_gui(self):
         """Setup shortcuts display GUI"""

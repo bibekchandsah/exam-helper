@@ -315,6 +315,15 @@ class ExamHelper:
                                         command=self.toggle_live_screen, **button_style)
         self.live_screen_btn.pack(side=tk.LEFT, padx=(0, 4))
         
+        # Send Screen button
+        self.send_screen_btn = tk.Button(control_row, text="📤 Send Screen", 
+                                        bg=self.colors['success'], 
+                                        fg='white',
+                                        activebackground='#00f5c4',
+                                        activeforeground='white',
+                                        command=self.send_screen_to_openai, **button_style)
+        self.send_screen_btn.pack(side=tk.LEFT, padx=(0, 4))
+        
         # Always on top modern checkbox
         self.always_on_top_var = tk.BooleanVar(value=self.config.get('always_on_top', True))
         checkbox_frame = tk.Frame(control_row, bg=self.colors['bg_primary'])
@@ -1186,6 +1195,106 @@ class ExamHelper:
         finally:
             # Re-enable the button
             self.root.after(0, lambda: self.capture_btn.config(text="📸 Capture Screen", state='normal'))
+    
+    def send_screen_to_openai(self):
+        """Capture screen and send to OpenAI Vision API"""
+        if not self.config.get('openai_api_key'):
+            messagebox.showwarning("API Error", "OpenAI API key is not configured.\nPlease set your API key in settings.")
+            return
+            
+        self.update_status("Capturing screen for OpenAI...")
+        self.send_screen_btn.config(text="📤 Sending...", state='disabled')
+        
+        # Run capture in a separate thread to avoid blocking UI
+        capture_thread = threading.Thread(target=self._perform_openai_screen_send, daemon=True)
+        capture_thread.start()
+        
+    def _perform_openai_screen_send(self):
+        """Perform the actual screenshot capture and OpenAI Vision API processing"""
+        try:
+            import requests
+            
+            # Capture screenshot excluding our window
+            self.root.after(0, lambda: self.update_status("Taking screenshot..."))
+            
+            base64_image = self.screenshot_capture.capture_and_encode(
+                exclude_window_title=self.root.title(),
+                resize=True,
+                format='JPEG'  # Use JPEG for better compression
+            )
+            
+            if base64_image:
+                self.root.after(0, lambda: self.update_status("Screenshot captured - sending to OpenAI..."))
+                self.logger.info("Screenshot captured successfully for OpenAI")
+                
+                # Prepare the API request
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.config.get('openai_api_key')}"
+                }
+                
+                payload = {
+                    "model": self.config.get('openai_model', 'gpt-4o'),
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Please look over this image and find the answer if it asks any question answer them all, dont over explain. Answer whats required by the question. If this is just a screenshot explain it for user"
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{base64_image}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "max_tokens": 1000
+                }
+                
+                # Send request to OpenAI
+                response = requests.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    answer = result['choices'][0]['message']['content']
+                    
+                    # Display the result
+                    self.root.after(0, lambda: self.display_answer("Screen Analysis", "OpenAI Vision", answer))
+                    self.root.after(0, lambda: self.update_status("OpenAI screen analysis complete"))
+                    
+                else:
+                    error_msg = f"OpenAI API error: {response.status_code}"
+                    try:
+                        error_detail = response.json().get('error', {}).get('message', 'Unknown error')
+                        error_msg += f" - {error_detail}"
+                    except:
+                        pass
+                    
+                    self.logger.error(error_msg)
+                    self.root.after(0, lambda: self.update_status("OpenAI API request failed"))
+                    self.root.after(0, lambda: messagebox.showerror("API Error", error_msg))
+                
+            else:
+                self.root.after(0, lambda: self.update_status("Failed to capture screenshot"))
+                self.logger.error("Failed to capture or encode screenshot for OpenAI")
+                
+        except Exception as e:
+            self.logger.error(f"OpenAI screen send error: {e}")
+            self.root.after(0, lambda: self.update_status("OpenAI screen send failed"))
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to send screen to OpenAI: {str(e)}"))
+            
+        finally:
+            # Re-enable the button
+            self.root.after(0, lambda: self.send_screen_btn.config(text="📤 Send Screen", state='normal'))
             
     def ocr_screen_now(self):
         """Capture screen and extract text content using Gemini OCR"""

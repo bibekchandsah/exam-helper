@@ -84,7 +84,9 @@ class ExamHelper:
                 'response_mode': 'short',  # 'short' or 'detailed'
                 'always_on_top': True,
                 'openai_model': 'gpt-3.5-turbo',
-                'working_models': []
+                'working_models': [],
+                'selected_image_model': 'OpenAI GPT-4o',  # Default image recognition model
+                'custom_image_prompt': "What's in this image? Please analyze and describe what you see."  # Default prompt
             }
             self.save_config()
             
@@ -150,7 +152,7 @@ class ExamHelper:
         
         # Set window size and center it
         window_width = 735
-        window_height = 740
+        window_height = 840
         self.center_window(self.root, window_width, window_height)
         
         # Modern dark theme colors
@@ -359,7 +361,7 @@ class ExamHelper:
         # Create styled combobox
         self.setup_model_selector_style()
         
-        self.selected_image_model = tk.StringVar(value='OpenAI GPT-4o')
+        self.selected_image_model = tk.StringVar(value=self.config.get('selected_image_model', 'OpenAI GPT-4o'))
         self.image_model_combo = ttk.Combobox(
             model_selector_frame,
             textvariable=self.selected_image_model,
@@ -1242,6 +1244,10 @@ class ExamHelper:
             else:
                 self.model_status_label.config(text="❌ No API Key", fg=self.colors['error'])
         
+        # Save selected model to config
+        self.config['selected_image_model'] = selected_model
+        self.save_config()
+        
         self.logger.info(f"Image model changed to: {selected_model}")
     
     def capture_screen_with_selected_model(self):
@@ -1328,18 +1334,8 @@ class ExamHelper:
                 "Authorization": f"Bearer {self.config.get('openai_api_key')}"
             }
             
-            prompt = """
-**Role:**
-You are an **exam & coding assistant**. Answer concisely and accurately.
-
-**Rules:**
-
-1. **MCQs** → Solve, pick the correct option. If no option matches: reply **“No matched answer found.”** No explanations.
-2. **Programming** → Output only code, placed where `"write your code here"` is indicated.
-3. **Answer Format** → Prefix with question number. Example: `Q1: C 3/7`, `Q2: print("Hello")`.
-4. **Non-Exam Images** → If not exam/coding related, briefly describe the image.
-5. **Multiple Questions** → Answer sequentially (Q1, Q2, Q3…).
-            """
+            # Use custom prompt from config or default
+            prompt = self.config.get('custom_image_prompt', "What's in this image? Please analyze and describe what you see.")
             if response_mode == 'detailed':
                 prompt += """
 **Role:**
@@ -1384,7 +1380,9 @@ You are an **exam-solving and coding assistant**. Your job is to analyze images 
    * Be accurate, concise, and logical.
    * Do not provide explanations unless the image is unrelated to exams or programming.
    * For multiple questions in one image, answer sequentially: Q1, Q2, Q3…
+
                 """
+           
             
             payload = {
                 "model": model_name,
@@ -1433,7 +1431,9 @@ You are an **exam-solving and coding assistant**. Your job is to analyze images 
     def _analyze_with_gemini(self, base64_image, response_mode):
         """Analyze image with Gemini Vision API"""
         try:
-            return self.gemini_client.analyze_image(base64_image, response_mode)
+            # Use custom prompt from config
+            custom_prompt = self.config.get('custom_image_prompt')
+            return self.gemini_client.analyze_image(base64_image, response_mode, custom_prompt)
         except Exception as e:
             return f"Gemini analysis error: {str(e)}"
         
@@ -1550,7 +1550,7 @@ class SettingsWindow:
             pass  # Icon loading failed, continue without icon
         
         # Center the window
-        self.center_window(450, 520)
+        self.center_window(680, 690)
         
         self.window.transient(parent)
         self.window.grab_set()
@@ -1650,6 +1650,30 @@ class SettingsWindow:
         
         self.live_screen_enabled_var = tk.BooleanVar(value=self.config.get('live_screen_enabled', False))
         ttk.Checkbutton(main_frame, text="Enable Live Screen on Startup", variable=self.live_screen_enabled_var).pack(anchor=tk.W, pady=5)
+        
+        # Custom Image Prompt
+        ttk.Label(main_frame, text="Custom Image Analysis Prompt:").pack(anchor=tk.W, pady=(15, 0))
+        prompt_hint = ttk.Label(main_frame, text="💡 This prompt will be used for image analysis. Leave default for general use.", 
+                               font=('Segoe UI', 8), foreground='gray')
+        prompt_hint.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Create a frame for the text widget with scrollbar
+        prompt_frame = ttk.Frame(main_frame)
+        prompt_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Text widget for multi-line prompt
+        self.custom_prompt_text = tk.Text(prompt_frame, height=4, wrap=tk.WORD, 
+                                         font=('Segoe UI', 9))
+        prompt_scrollbar = ttk.Scrollbar(prompt_frame, orient=tk.VERTICAL, command=self.custom_prompt_text.yview)
+        self.custom_prompt_text.config(yscrollcommand=prompt_scrollbar.set)
+        
+        # Insert current prompt
+        current_prompt = self.config.get('custom_image_prompt', "What's in this image? Please analyze and describe what you see.")
+        self.custom_prompt_text.insert('1.0', current_prompt)
+        
+        # Pack text widget and scrollbar
+        self.custom_prompt_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        prompt_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # Buttons
         button_frame = ttk.Frame(main_frame)
@@ -1817,6 +1841,7 @@ class SettingsWindow:
             self.config['audio_enabled'] = self.audio_enabled_var.get()
             self.config['live_screen_enabled'] = self.live_screen_enabled_var.get()
             self.config['openai_model'] = self.model_var.get()
+            self.config['custom_image_prompt'] = self.custom_prompt_text.get('1.0', tk.END).strip()
             
             self.save_callback()
             messagebox.showinfo("Settings", "Settings saved successfully!")

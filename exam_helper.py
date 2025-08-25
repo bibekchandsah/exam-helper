@@ -26,7 +26,7 @@ class ExamHelper:
         self.ocr_capture = OCRCapture()
         self.audio_capture = AudioCapture()
         self.screenshot_capture = ScreenshotCapture()
-        self.llm_client = LLMClient(self.config.get('openai_api_key', ''))
+        self.llm_client = LLMClient(self.config.get('openai_api_key', ''), self.config.get('openai_model', 'gpt-3.5-turbo'))
         self.gemini_client = GeminiClient(self.config.get('gemini_api_key', ''))
         self.perplexity_client = PerplexityClient(self.config.get('perplexity_api_key', ''))
         
@@ -35,10 +35,14 @@ class ExamHelper:
         self.answer_queue = queue.Queue()
         self.running = True
         
+        # Store last AI response for copying
+        self.last_ai_response = ""
+        
         # Thread control flags
         self.ocr_running = False
         self.audio_running = False
         self.live_screen_running = False
+        self.last_ai_response = ""  # Store the last AI response for copying
         self.ocr_thread = None
         self.audio_thread = None
         self.live_screen_thread = None
@@ -78,7 +82,9 @@ class ExamHelper:
                 'ocr_enabled': True,
                 'live_screen_enabled': False,
                 'response_mode': 'short',  # 'short' or 'detailed'
-                'always_on_top': True
+                'always_on_top': True,
+                'openai_model': 'gpt-3.5-turbo',
+                'working_models': []
             }
             self.save_config()
             
@@ -86,7 +92,31 @@ class ExamHelper:
         """Save configuration to config.json"""
         with open('config.json', 'w') as f:
             json.dump(self.config, f, indent=2)
-            
+        
+        # Update LLM client with new model if it changed
+        if hasattr(self, 'llm_client') and self.llm_client:
+            new_model = self.config.get('openai_model', 'gpt-3.5-turbo')
+            if self.llm_client.get_current_model() != new_model:
+                self.llm_client.set_model(new_model)
+                self.logger.info(f"Updated LLM model to: {new_model}")
+                
+                # Update model label in GUI
+                if hasattr(self, 'model_label'):
+                    self.model_label.config(text=f"🤖 {new_model}")
+        
+        # Update API key if it changed
+        if hasattr(self, 'llm_client') and self.llm_client:
+            new_api_key = self.config.get('openai_api_key', '')
+            if self.llm_client.api_key != new_api_key:
+                self.llm_client.api_key = new_api_key
+                if new_api_key:
+                    from openai import OpenAI
+                    self.llm_client.client = OpenAI(api_key=new_api_key)
+                    # Reset model checking when API key changes
+                    self.llm_client.models_checked = False
+                    self.llm_client.working_models = []
+                else:
+                    self.llm_client.client = None
     def setup_gui(self):
         """Setup the modern GUI window"""
         self.root = tk.Tk()
@@ -143,6 +173,14 @@ class ExamHelper:
                                    fg=self.colors['success'], 
                                    bg=self.colors['bg_secondary'])
         self.status_label.pack(side=tk.LEFT)
+        
+        # Model indicator
+        model_name = self.config.get('openai_model', 'gpt-3.5-turbo')
+        self.model_label = tk.Label(status_frame, text=f"🤖 {model_name}", 
+                                   font=('Segoe UI', 8),
+                                   fg=self.colors['text_secondary'], 
+                                   bg=self.colors['bg_secondary'])
+        self.model_label.pack(side=tk.LEFT, padx=(15, 0))
         
         # Status indicators with modern styling
         indicators_frame = tk.Frame(status_frame, bg=self.colors['bg_secondary'])
@@ -415,6 +453,18 @@ class ExamHelper:
         
         self.manual_input.bind("<Return>", _on_enter_key)
         
+        # Add keyboard shortcuts for clear and copy
+        def _on_clear_shortcut(event):
+            self.clear_ai_responses()
+            return "break"
+        
+        def _on_copy_shortcut(event):
+            self.copy_last_response()
+            return "break"
+        
+        self.root.bind("<Control-l>", _on_clear_shortcut)
+        self.root.bind("<Control-Shift-C>", _on_copy_shortcut)
+        
         # Modern submit button
         submit_btn = tk.Button(input_section, text="🚀 Submit Question", 
                               bg=self.colors['success'], 
@@ -434,12 +484,45 @@ class ExamHelper:
         answer_section = tk.Frame(main_frame, bg=self.colors['bg_secondary'], relief='flat', bd=0)
         answer_section.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
         
-        # Answer header
-        answer_header = tk.Label(answer_section, text="🤖 AI Responses", 
+        # AI Responses section header with buttons
+        response_header_frame = tk.Frame(answer_section, bg=self.colors['bg_secondary'])
+        response_header_frame.pack(pady=(12, 8), fill=tk.X, padx=15)
+        
+        answer_header = tk.Label(response_header_frame, text="🤖 AI Responses", 
                                 font=('Segoe UI', 11, 'bold'),
                                 fg=self.colors['text_primary'], 
                                 bg=self.colors['bg_secondary'])
-        answer_header.pack(pady=(12, 8))
+        answer_header.pack(side=tk.LEFT)
+        
+        # Clear button for AI responses
+        clear_btn = tk.Button(response_header_frame, text="🗑️ Clear", 
+                             font=('Segoe UI', 9),
+                             fg='white',
+                             bg='#dc3545',  # Red color for clear action
+                             activebackground='#c82333',
+                             activeforeground='white',
+                             relief='flat',
+                             bd=0,
+                             padx=8,
+                             pady=4,
+                             cursor='hand2',
+                             command=self.clear_ai_responses)
+        clear_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        # Copy button for last response
+        copy_btn = tk.Button(response_header_frame, text="📋 Copy Last", 
+                            font=('Segoe UI', 9),
+                            fg='white',
+                            bg='#28a745',  # Green color for copy action
+                            activebackground='#218838',
+                            activeforeground='white',
+                            relief='flat',
+                            bd=0,
+                            padx=8,
+                            pady=4,
+                            cursor='hand2',
+                            command=self.copy_last_response)
+        copy_btn.pack(side=tk.RIGHT, padx=(5, 0))
         
         # Modern scrolled text with dark theme
         display_container = tk.Frame(answer_section, bg=self.colors['bg_tertiary'], relief='flat', bd=0)
@@ -447,6 +530,61 @@ class ExamHelper:
         
         # Create custom ScrolledText with dark-themed scrollbar
         text_frame = tk.Frame(display_container, bg=self.colors['bg_tertiary'])
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        
+        # Add hover effects and tooltips for both buttons
+        def create_button_effects(button, normal_color, hover_color, tooltip_text):
+            def on_hover_enter(event):
+                button.config(bg=hover_color)
+                
+                def show_tooltip():
+                    if hasattr(button, '_hover_active') and button._hover_active:
+                        tooltip = tk.Toplevel()
+                        tooltip.wm_overrideredirect(True)
+                        tooltip.wm_geometry(f"+{event.x_root+15}+{event.y_root+25}")
+                        tooltip.configure(bg='black')
+                        
+                        try:
+                            if self.always_on_top_var.get():
+                                tooltip.attributes('-topmost', True)
+                        except:
+                            pass
+                        
+                        frame = tk.Frame(tooltip, bg='#1a1a1a', relief='flat', bd=0)
+                        frame.pack(padx=1, pady=1)
+                        
+                        label = tk.Label(frame, text=tooltip_text,
+                                       bg='#1a1a1a', fg='#ffffff',
+                                       font=('Segoe UI', 9),
+                                       padx=12, pady=8,
+                                       justify=tk.LEFT)
+                        label.pack()
+                        
+                        button.tooltip = tooltip
+                
+                button._hover_active = True
+                button.after(800, show_tooltip)
+            
+            def on_hover_leave(event):
+                button.config(bg=normal_color)
+                button._hover_active = False
+                
+                if hasattr(button, 'tooltip'):
+                    try:
+                        button.tooltip.destroy()
+                        del button.tooltip
+                    except:
+                        pass
+            
+            button.bind('<Enter>', on_hover_enter)
+            button.bind('<Leave>', on_hover_leave)
+        
+        # Apply effects to buttons
+        create_button_effects(clear_btn, '#dc3545', '#c82333', 
+                            "Clear all AI responses\nShortcut: Ctrl+L\nRequires confirmation")
+        create_button_effects(copy_btn, '#28a745', '#218838', 
+                            "Copy last AI response\nShortcut: Ctrl+Shift+C")
+        
         text_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         
         # Create Text widget
@@ -732,6 +870,9 @@ class ExamHelper:
     def display_answer(self, source, question, answer):
         """Display answer in the GUI"""
         timestamp = datetime.now().strftime("%H:%M:%S")
+        
+        # Store the last response for copying
+        self.last_ai_response = answer
         
         # Use helper method to add text safely
         formatted_text = f"\n[{timestamp}] {source} Question:\n{question}\n\nAnswer:\n{answer}\n{'-' * 50}\n"
@@ -1085,6 +1226,63 @@ class ExamHelper:
             self.hotkey_listener.stop()
         self.root.quit()
         self.root.destroy()
+    
+    def clear_ai_responses(self):
+        """Clear all AI responses from the display area with confirmation"""
+        try:
+            # Check if there's content to clear
+            current_content = self.answer_display.get('1.0', tk.END).strip()
+            if not current_content:
+                self.update_status("No responses to clear")
+                return
+            
+            # Ask for confirmation
+            from tkinter import messagebox
+            result = messagebox.askyesno(
+                "Clear AI Responses", 
+                "Are you sure you want to clear all AI responses?\n\nThis action cannot be undone.",
+                icon='warning'
+            )
+            
+            if result:
+                # Temporarily enable the widget to clear content
+                self.answer_display.config(state='normal')
+                self.answer_display.delete('1.0', tk.END)
+                # Disable it again to maintain read-only state
+                self.answer_display.config(state='disabled')
+                
+                # Clear the stored last response as well
+                self.last_ai_response = ""
+                
+                self.update_status("AI responses cleared")
+                self.logger.info("AI responses area cleared by user")
+            else:
+                self.update_status("Clear cancelled")
+                
+        except Exception as e:
+            self.logger.error(f"Error clearing AI responses: {e}")
+            self.update_status("Error clearing responses")
+    
+    def copy_last_response(self):
+        """Copy the last AI response to clipboard"""
+        try:
+            if not hasattr(self, 'last_ai_response') or not self.last_ai_response.strip():
+                self.update_status("No response to copy")
+                return
+            
+            # Copy to clipboard
+            self.root.clipboard_clear()
+            self.root.clipboard_append(self.last_ai_response)
+            self.root.update()  # Ensure clipboard is updated
+            
+            # Show success message with response preview
+            preview = self.last_ai_response[:50] + "..." if len(self.last_ai_response) > 50 else self.last_ai_response
+            self.update_status(f"Copied: {preview}")
+            self.logger.info(f"Last AI response copied to clipboard (length: {len(self.last_ai_response)} chars)")
+            
+        except Exception as e:
+            self.logger.error(f"Error copying response: {e}")
+            self.update_status("Error copying response")
 
 
 class SettingsWindow:
@@ -1094,7 +1292,7 @@ class SettingsWindow:
         
         self.window = tk.Toplevel(parent)
         self.window.title("Settings")
-        self.window.geometry("400x460")
+        self.window.geometry("450x520")
         self.window.transient(parent)
         self.window.grab_set()
         
@@ -1111,6 +1309,12 @@ class SettingsWindow:
         api_key_entry = ttk.Entry(main_frame, textvariable=self.api_key_var, show='*', width=50)
         api_key_entry.pack(fill=tk.X, pady=(0, 10))
         
+        # Auto-scan hint
+        if not self.config.get('working_models'):
+            hint_label = ttk.Label(main_frame, text="💡 Tip: After entering your API key, click 'Scan Models' to find available models", 
+                                 font=('Segoe UI', 8), foreground='gray')
+            hint_label.pack(anchor=tk.W, pady=(0, 5))
+        
         # Gemini API Key
         ttk.Label(main_frame, text="Gemini API Key (for vision):").pack(anchor=tk.W)
         self.gemini_key_var = tk.StringVar(value=self.config.get('gemini_api_key', ''))
@@ -1122,6 +1326,36 @@ class SettingsWindow:
         self.perplexity_key_var = tk.StringVar(value=self.config.get('perplexity_api_key', ''))
         perplexity_key_entry = ttk.Entry(main_frame, textvariable=self.perplexity_key_var, show='*', width=50)
         perplexity_key_entry.pack(fill=tk.X, pady=(0, 10))
+        
+        # OpenAI Model Selection
+        model_frame = ttk.Frame(main_frame)
+        model_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(model_frame, text="OpenAI Model:").pack(anchor=tk.W)
+        
+        model_selection_frame = ttk.Frame(model_frame)
+        model_selection_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        # Model dropdown
+        self.model_var = tk.StringVar(value=self.config.get('openai_model', 'gpt-3.5-turbo'))
+        
+        # Get available models from config or use default list
+        working_models = self.config.get('working_models', [])
+        if not working_models:
+            working_models = ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini']
+        
+        self.model_combo = ttk.Combobox(model_selection_frame, textvariable=self.model_var, 
+                                       values=working_models, state='readonly', width=25)
+        self.model_combo.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Scan models button
+        self.scan_btn = ttk.Button(model_selection_frame, text="🔍 Scan Models", 
+                                  command=self.scan_working_models)
+        self.scan_btn.pack(side=tk.LEFT)
+        
+        # Model status label
+        self.model_status_label = ttk.Label(model_selection_frame, text="", foreground='green')
+        self.model_status_label.pack(side=tk.LEFT, padx=(10, 0))
         
         # Scan interval
         ttk.Label(main_frame, text="Scan Interval (seconds):").pack(anchor=tk.W)
@@ -1152,6 +1386,51 @@ class SettingsWindow:
         ttk.Button(button_frame, text="Save", command=self.save_settings).pack(side=tk.RIGHT, padx=(5, 0))
         ttk.Button(button_frame, text="Cancel", command=self.window.destroy).pack(side=tk.RIGHT)
         
+    def scan_working_models(self):
+        """Scan for working OpenAI models"""
+        api_key = self.api_key_var.get().strip()
+        if not api_key:
+            messagebox.showwarning("Warning", "Please enter your OpenAI API key first.")
+            return
+            
+        self.scan_btn.config(text="Scanning...", state='disabled')
+        self.model_status_label.config(text="Scanning models...", foreground='orange')
+        self.window.update()
+        
+        try:
+            # Import here to avoid circular imports
+            from llm_module import LLMClient
+            
+            # Create temporary client to test models
+            temp_client = LLMClient(api_key)
+            working_models = temp_client.get_working_models()
+            
+            if working_models:
+                # Update dropdown with working models
+                self.model_combo['values'] = working_models
+                
+                # Set current model if it's in the working list, otherwise set first working model
+                current_model = self.model_var.get()
+                if current_model not in working_models:
+                    self.model_var.set(working_models[0])
+                
+                # Update config with working models
+                self.config['working_models'] = working_models
+                
+                self.model_status_label.config(text=f"✓ Found {len(working_models)} models", foreground='green')
+                messagebox.showinfo("Success", f"Found {len(working_models)} working models:\n" + 
+                                  "\n".join(working_models))
+            else:
+                self.model_status_label.config(text="✗ No models found", foreground='red')
+                messagebox.showerror("Error", "No working models found. Please check your API key.")
+                
+        except Exception as e:
+            self.model_status_label.config(text="✗ Scan failed", foreground='red')
+            messagebox.showerror("Error", f"Failed to scan models: {str(e)}")
+        
+        finally:
+            self.scan_btn.config(text="🔍 Scan Models", state='normal')
+    
     def save_settings(self):
         """Save settings and close window"""
         try:
@@ -1163,6 +1442,7 @@ class SettingsWindow:
             self.config['ocr_enabled'] = self.ocr_enabled_var.get()
             self.config['audio_enabled'] = self.audio_enabled_var.get()
             self.config['live_screen_enabled'] = self.live_screen_enabled_var.get()
+            self.config['openai_model'] = self.model_var.get()
             
             self.save_callback()
             messagebox.showinfo("Settings", "Settings saved successfully!")
@@ -1300,6 +1580,28 @@ class ShortcutsWindow:
             pass
         finally:
             self.window.destroy()
+    
+
+    def copy_last_response(self):
+        """Copy the last AI response to clipboard"""
+        try:
+            if not self.last_ai_response.strip():
+                self.update_status("No response to copy")
+                return
+            
+            # Copy to clipboard
+            self.root.clipboard_clear()
+            self.root.clipboard_append(self.last_ai_response)
+            self.root.update()  # Ensure clipboard is updated
+            
+            # Show success message with response preview
+            preview = self.last_ai_response[:50] + "..." if len(self.last_ai_response) > 50 else self.last_ai_response
+            self.update_status(f"Copied: {preview}")
+            self.logger.info(f"Last AI response copied to clipboard (length: {len(self.last_ai_response)} chars)")
+            
+        except Exception as e:
+            self.logger.error(f"Error copying response: {e}")
+            self.update_status("Error copying response")
 
 
 if __name__ == "__main__":

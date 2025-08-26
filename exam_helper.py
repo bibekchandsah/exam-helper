@@ -90,7 +90,8 @@ class ExamHelper:
                 'working_gemini_models': [],
                 'selected_image_model': 'OpenAI GPT-4o',  # Default image recognition model
                 'use_custom_prompt': False,  # Whether to use custom prompt or hardcoded prompt
-                'custom_image_prompt': "What's in this image? Please analyze and describe what you see."  # Default prompt
+                'custom_image_prompt': "What's in this image? Please analyze and describe what you see.",  # Default prompt
+                'audio_record_duration': '10s'  # OpenAI audio recording duration
             }
             self.save_config()
             
@@ -334,6 +335,14 @@ class ExamHelper:
                                          activeforeground='white',
                                          command=self.record_openai_audio, **button_style)
         self.openai_audio_btn.pack(side=tk.LEFT, padx=(0, 4))
+        
+        # Duration selection dropdown
+        self.record_duration_var = tk.StringVar(value=self.config.get('audio_record_duration', '10s'))
+        duration_combo = ttk.Combobox(control_row, textvariable=self.record_duration_var,
+                                     values=['5s', '10s', '15s', '20s', '30s'],
+                                     state='readonly', width=4)
+        duration_combo.pack(side=tk.LEFT, padx=(2, 4))
+        duration_combo.bind('<<ComboboxSelected>>', self.on_record_duration_change)
         
         # Capture Screen button (merged functionality)
         self.capture_btn = tk.Button(control_row, text="📸 Capture Screen", 
@@ -1152,9 +1161,13 @@ class ExamHelper:
             messagebox.showwarning("API Error", "OpenAI API key is not configured.\nPlease set your API key in settings.")
             return
             
+        # Get selected duration
+        duration_str = self.config.get('audio_record_duration', '10s')
+        duration = int(duration_str.replace('s', ''))
+        
         # Disable button and show recording status
         self.openai_audio_btn.config(text="🔴 Recording...", state='disabled')
-        self.update_status("Recording audio for 5 seconds...")
+        self.update_status(f"Recording audio for {duration} seconds...")
         
         # Run recording in separate thread to avoid blocking UI
         recording_thread = threading.Thread(target=self._perform_openai_audio_recording, daemon=True)
@@ -1163,10 +1176,14 @@ class ExamHelper:
     def _perform_openai_audio_recording(self):
         """Perform the actual OpenAI audio recording and transcription"""
         try:
+            # Get selected duration
+            duration_str = self.config.get('audio_record_duration', '10s')
+            duration = int(duration_str.replace('s', ''))
+            
             # Record and transcribe with OpenAI
             api_key = self.config.get('openai_api_key')
             transcription = self.audio_capture.record_and_transcribe_with_openai(
-                duration=5, 
+                duration=duration, 
                 api_key=api_key,
                 prompt="Please transcribe this audio accurately. If it sounds like a question, provide the exact question being asked."
             )
@@ -1543,6 +1560,13 @@ class ExamHelper:
                 self.model_label.config(text=f"🤖 {selected_model}")
         
         self.logger.info(f"Response model changed to: {selected_model}")
+    
+    def on_record_duration_change(self, event=None):
+        """Handle recording duration selection change"""
+        duration_str = self.record_duration_var.get()
+        self.config['audio_record_duration'] = duration_str
+        self.save_config()
+        self.logger.info(f"Recording duration changed to: {duration_str}")
     
     def start_audio_visualization(self):
         """Start the audio visualization display"""

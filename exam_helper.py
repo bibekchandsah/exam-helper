@@ -8,6 +8,9 @@ import os
 from datetime import datetime
 import logging
 import numpy as np
+import base64
+import io
+from PIL import Image
 
 # Import modules for different functionalities
 from ocr_module import OCRCapture
@@ -1482,6 +1485,9 @@ class ExamHelper:
                 if base64_image:
                     self.logger.info(f"Live screen captured successfully for {selected_model}")
                     
+                    # Copy screenshot to clipboard
+                    self.root.after(0, lambda img=base64_image: self.copy_image_to_clipboard(img))
+                    
                     # Get response mode
                     response_mode = self.config.get('response_mode', 'short')
                     
@@ -1889,6 +1895,9 @@ class ExamHelper:
                 self.root.after(0, lambda: self.update_status(f"Screenshot captured - analyzing with {selected_model_name}..."))
                 self.logger.info(f"Screenshot captured successfully for {selected_model_name}")
                 
+                # Copy screenshot to clipboard
+                self.root.after(0, lambda: self.copy_image_to_clipboard(base64_image))
+                
                 # Get response mode
                 response_mode = self.config.get('response_mode', 'short')
                 
@@ -2142,6 +2151,51 @@ You are an **exam-solving and coding assistant**. Your job is to analyze images 
         except Exception as e:
             self.logger.error(f"Error copying response: {e}")
             self.update_status("Error copying response")
+    
+    def copy_image_to_clipboard(self, base64_image):
+        """Copy captured image to clipboard"""
+        try:
+            # Decode base64 image
+            image_data = base64.b64decode(base64_image)
+            image = Image.open(io.BytesIO(image_data))
+            
+            # Copy to clipboard using PIL
+            import platform
+            if platform.system() == "Windows":
+                try:
+                    # Try using win32clipboard if available
+                    import win32clipboard
+                    
+                    # Convert PIL image to clipboard format
+                    output = io.BytesIO()
+                    image.convert("RGB").save(output, "BMP")
+                    data = output.getvalue()[14:]  # Remove BMP header
+                    
+                    win32clipboard.OpenClipboard()
+                    win32clipboard.EmptyClipboard()
+                    win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+                    win32clipboard.CloseClipboard()
+                    
+                    self.update_status("📋 Screenshot copied to clipboard!")
+                    self.logger.info("Screenshot copied to clipboard successfully")
+                    
+                except ImportError:
+                    # Fallback: save to temp file
+                    temp_path = "temp_screenshot.png"
+                    image.save(temp_path, "PNG")
+                    self.update_status(f"📋 Screenshot saved as {temp_path}")
+                    self.logger.info(f"Screenshot saved to {temp_path} (win32clipboard not available)")
+                    
+            else:
+                # For non-Windows platforms, save to temp file
+                temp_path = "temp_screenshot.png"
+                image.save(temp_path, "PNG")
+                self.update_status(f"📋 Screenshot saved as {temp_path}")
+                self.logger.info(f"Screenshot saved to {temp_path}")
+                
+        except Exception as e:
+            self.logger.error(f"Error copying image to clipboard: {e}")
+            self.update_status("❌ Failed to copy image to clipboard")
 
 
 class SettingsWindow:

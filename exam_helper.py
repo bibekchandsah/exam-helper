@@ -7,6 +7,7 @@ import json
 import os
 from datetime import datetime
 import logging
+import numpy as np
 
 # Import modules for different functionalities
 from ocr_module import OCRCapture
@@ -832,6 +833,49 @@ class ExamHelper:
         
         self.answer_display.bind("<MouseWheel>", _on_answer_scroll)
         
+        # Audio visualization frame (bottom left)
+        self.audio_viz_frame = tk.Frame(main_frame, bg=self.colors['bg_secondary'], relief='flat', bd=0)
+        # Initially hidden - will be shown when audio is enabled
+        
+        # Audio visualization header
+        audio_viz_header = tk.Label(self.audio_viz_frame, text="Audio Level Monitor", 
+                                   font=('Segoe UI', 10, 'bold'),
+                                   fg=self.colors['text_primary'], 
+                                   bg=self.colors['bg_secondary'])
+        audio_viz_header.pack(pady=(10, 5))
+        
+        # Audio level display frame
+        level_frame = tk.Frame(self.audio_viz_frame, bg=self.colors['bg_secondary'])
+        level_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+        
+        # Current level label
+        self.audio_level_label = tk.Label(level_frame, text="Level: 0", 
+                                         font=('Segoe UI', 9),
+                                         fg=self.colors['text_primary'], 
+                                         bg=self.colors['bg_secondary'])
+        self.audio_level_label.pack(side=tk.LEFT)
+        
+        # Threshold indicator
+        self.threshold_label = tk.Label(level_frame, text="Threshold: 300", 
+                                       font=('Segoe UI', 9),
+                                       fg='#FF9800',  # Orange like voice translator
+                                       bg=self.colors['bg_secondary'])
+        self.threshold_label.pack(side=tk.RIGHT)
+        
+        # Canvas for visualization (same as voice translator)
+        self.audio_canvas = tk.Canvas(self.audio_viz_frame, 
+                                     height=60, 
+                                     bg='#1e1e1e',  # Same as voice translator
+                                     highlightthickness=0)
+        self.audio_canvas.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        # Bind canvas resize
+        self.audio_canvas.bind('<Configure>', self.on_canvas_resize)
+        
+        # Initialize canvas dimensions
+        self.canvas_width = 400
+        self.canvas_height = 60
+        
         # Modern bottom buttons
         bottom_frame = tk.Frame(main_frame, bg=self.colors['bg_primary'])
         bottom_frame.pack(pady=(0, 5))
@@ -998,18 +1042,25 @@ class ExamHelper:
         
 
     def audio_scan_loop(self):
-        """Continuously listen for audio questions"""
+        """Lightweight speech processing loop - only processes queued speech"""
+        self.logger.info("Speech processing loop started")
+        
         while self.running and self.audio_running:
             try:
-                question = self.audio_capture.listen_for_question()
-                if question and self.is_likely_question(question):
-                    self.question_queue.put(('Audio', question))
-                    self.logger.info(f"Audio Question detected: {question[:50]}...")
+                # Get speech from queue (non-blocking)
+                audio_data = self.audio_capture.get_speech_from_queue()
+                if audio_data:
+                    # Process speech in this thread (not audio capture thread)
+                    question = self.audio_capture.process_speech_audio(audio_data)
+                    if question and self.is_likely_question(question):
+                        self.question_queue.put(('Audio', question))
+                        self.logger.info(f"Audio Question detected: {question[:50]}...")
                     
             except Exception as e:
-                self.logger.error(f"Audio scan error: {e}")
+                self.logger.error(f"Speech processing error: {e}")
                 
-            time.sleep(1)
+            # Sleep longer since we're just checking a queue
+            time.sleep(0.2)
             
     def is_likely_question(self, text):
         """Simple heuristic to determine if text is likely a question"""
@@ -1149,11 +1200,20 @@ class ExamHelper:
             self.start_audio_scanning()
             
     def start_audio_scanning(self):
-        """Start Audio scanning"""
+        """Start Audio scanning with proper thread separation"""
         if not self.audio_running:
             self.audio_running = True
+            
+            # Start dedicated audio capture thread
+            self.audio_capture.start_audio_monitoring()
+            
+            # Start speech processing thread (lightweight)
             self.audio_thread = threading.Thread(target=self.audio_scan_loop, daemon=True)
             self.audio_thread.start()
+            
+            # Show visualization and start GUI updates
+            self.start_audio_visualization()
+            
             self.audio_btn.config(text="Disable Audio")
             self.audio_status_label.config(text="Audio: On", foreground='green')
             self.config['audio_enabled'] = True
@@ -1165,6 +1225,13 @@ class ExamHelper:
         """Stop Audio scanning"""
         if self.audio_running:
             self.audio_running = False
+            
+            # Stop audio capture thread first
+            self.audio_capture.stop_audio_monitoring()
+            
+            # Hide visualization
+            self.stop_audio_visualization()
+            
             self.audio_btn.config(text="Enable Audio")
             self.audio_status_label.config(text="Audio: Off", foreground='red')
             self.config['audio_enabled'] = False
@@ -1409,6 +1476,154 @@ class ExamHelper:
                 self.model_label.config(text=f"🤖 {selected_model}")
         
         self.logger.info(f"Response model changed to: {selected_model}")
+    
+    def start_audio_visualization(self):
+        """Start the audio visualization display"""
+        self.audio_viz_frame.pack(fill=tk.X, pady=(0, 15), before=self.answer_display.master)
+        # Start GUI-based visualization updates (no separate thread)
+        self.update_audio_visualization()
+        
+    def stop_audio_visualization(self):
+        """Stop and hide the audio visualization"""
+        self.audio_viz_frame.pack_forget()
+        
+    def on_canvas_resize(self, event):
+        """Handle canvas resize"""
+        self.canvas_width = event.width
+        self.canvas_height = event.height
+        
+    def update_audio_visualization(self):
+        """Update the audio level visualization - same as voice translator"""
+        try:
+            # Clear canvas
+            self.audio_canvas.delete("all")
+            
+            if not self.audio_running:
+                return
+            
+            # Get current RMS and history from audio capture
+            current_rms = self.audio_capture.get_current_rms()
+            max_rms_seen = self.audio_capture.get_max_rms_seen()
+            threshold = self.audio_capture.get_threshold_level()
+            
+            # Update level label
+            self.audio_level_label.config(text=f"Level: {int(current_rms)}")
+            
+            # Draw background grid
+            self.draw_background_grid()
+            
+            # Draw threshold line
+            self.draw_threshold_line(threshold, max_rms_seen)
+            
+            # Draw current level bar
+            self.draw_current_level(current_rms, max_rms_seen, threshold)
+            
+            # Draw RMS history waveform
+            self.draw_rms_history(max_rms_seen)
+            
+        except Exception as e:
+            pass  # Ignore visualization errors
+        
+        # Schedule next update (GUI thread only)
+        if self.audio_running:
+            self.root.after(100, self.update_audio_visualization)  # Update 10 times per second (less CPU intensive)
+    
+    def draw_background_grid(self):
+        """Draw background grid for the visualizer - same as voice translator"""
+        # Horizontal lines
+        for i in range(0, self.canvas_height, 20):
+            self.audio_canvas.create_line(0, i, self.canvas_width, i, 
+                                       fill='#333333', width=1)
+        
+        # Vertical lines
+        for i in range(0, self.canvas_width, 50):
+            self.audio_canvas.create_line(i, 0, i, self.canvas_height, 
+                                       fill='#333333', width=1)
+    
+    def draw_threshold_line(self, threshold, max_rms_seen):
+        """Draw the silence threshold line - same as voice translator"""
+        if max_rms_seen > 0:
+            threshold_y = self.canvas_height - (threshold / max_rms_seen) * self.canvas_height
+            threshold_y = max(0, min(self.canvas_height, threshold_y))
+            
+            # Draw threshold line
+            self.audio_canvas.create_line(0, threshold_y, self.canvas_width, threshold_y, 
+                                       fill='#FF9800', width=2, dash=(5, 5))
+            
+            # Add threshold label
+            self.audio_canvas.create_text(self.canvas_width - 5, threshold_y - 10, 
+                                       text="Threshold", fill='#FF9800', 
+                                       font=('Arial', 8), anchor='ne')
+    
+    def draw_current_level(self, current_rms, max_rms_seen, threshold):
+        """Draw current audio level bar - same as voice translator"""
+        if max_rms_seen > 0 and current_rms > 0:
+            # Calculate bar height
+            bar_height = (current_rms / max_rms_seen) * self.canvas_height
+            bar_height = max(0, min(self.canvas_height, bar_height))
+            
+            # Determine color based on level
+            if current_rms > threshold:
+                color = '#4CAF50'  # Green for speech
+            else:
+                color = '#2196F3'  # Blue for background noise
+            
+            # Draw level bar on the right side
+            bar_width = 30
+            x1 = self.canvas_width - bar_width - 5
+            x2 = self.canvas_width - 5
+            y1 = self.canvas_height - bar_height
+            y2 = self.canvas_height
+            
+            self.audio_canvas.create_rectangle(x1, y1, x2, y2, 
+                                           fill=color, outline=color)
+            
+            # Add level text
+            if bar_height > 15:
+                self.audio_canvas.create_text((x1 + x2) / 2, y1 + 10, 
+                                           text=f"{int(current_rms)}", 
+                                           fill='white', font=('Arial', 8))
+                                           
+        # Update level label color based on threshold
+        if current_rms > threshold:
+            self.audio_level_label.config(fg='#4CAF50')  # Green when above threshold
+        elif current_rms > threshold * 0.5:
+            self.audio_level_label.config(fg='#FF9800')  # Orange when moderate
+        else:
+            self.audio_level_label.config(fg=self.colors['text_secondary'])  # Gray when low
+    
+    def draw_rms_history(self, max_rms_seen):
+        """Draw RMS history as a waveform - same as voice translator"""
+        rms_history = self.audio_capture.get_rms_history()
+        
+        if len(rms_history) < 2 or max_rms_seen <= 0:
+            return
+        
+        # Calculate points for the waveform
+        points = []
+        
+        # Available width for waveform (excluding level bar area)
+        waveform_width = self.canvas_width - 40
+        
+        for i, rms in enumerate(rms_history):
+            x = (i / len(rms_history)) * waveform_width
+            y = self.canvas_height - (rms / max_rms_seen) * self.canvas_height
+            y = max(0, min(self.canvas_height, y))
+            points.extend([x, y])
+        
+        # Draw waveform line
+        if len(points) >= 4:
+            self.audio_canvas.create_line(points, fill='#00BCD4', width=2, smooth=True)
+            
+        # Fill area under the curve
+        if len(points) >= 4:
+            # Add bottom points to create a filled polygon
+            fill_points = points.copy()
+            fill_points.extend([waveform_width, self.canvas_height, 0, self.canvas_height])
+            self.audio_canvas.create_polygon(fill_points, fill='#00BCD4', 
+                                         outline='', stipple='gray25')
+    
+
     
     def capture_screen_with_selected_model(self):
         """Capture screen and analyze with the selected image model"""

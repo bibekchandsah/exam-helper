@@ -404,13 +404,13 @@ class AudioCapture:
             self.logger.error(f"Audio recording error: {e}")
             return None
     
-    def transcribe_with_openai_audio(self, encoded_audio, api_key, prompt="What is being said in this audio recording? Please transcribe it accurately."):
+    def transcribe_with_openai_audio(self, encoded_audio, api_key, model="gpt-4o-audio-preview", prompt="What is being said in this audio recording? Please transcribe it accurately."):
         """Send audio to OpenAI audio model for transcription"""
         try:
             client = OpenAI(api_key=api_key)
             
             completion = client.chat.completions.create(
-                model="gpt-4o-audio-preview",
+                model=model,
                 modalities=["text"],  # Only text response needed for transcription
                 messages=[
                     {
@@ -440,7 +440,7 @@ class AudioCapture:
             self.logger.error(f"OpenAI audio transcription error: {e}")
             return None
     
-    def record_and_transcribe_with_openai(self, duration=5, api_key=None, prompt="What is being said in this audio recording? Please transcribe it accurately."):
+    def record_and_transcribe_with_openai(self, duration=5, api_key=None, model="gpt-4o-audio-preview", prompt="What is being said in this audio recording? Please transcribe it accurately."):
         """Complete workflow: record audio and transcribe with OpenAI"""
         # Record audio
         encoded_audio = self.record_audio_for_openai(duration, api_key)
@@ -448,8 +448,126 @@ class AudioCapture:
             return None
             
         # Transcribe with OpenAI
-        transcription = self.transcribe_with_openai_audio(encoded_audio, api_key, prompt)
+        transcription = self.transcribe_with_openai_audio(encoded_audio, api_key, model, prompt)
         return transcription
+    
+    def record_and_transcribe_with_whisper(self, duration=5, api_key=None, model="whisper-1"):
+        """Complete workflow: record audio and transcribe with OpenAI Whisper API"""
+        try:
+            # Record audio to file for Whisper API
+            audio_file = self.record_audio_to_file(duration)
+            if not audio_file:
+                return None
+            
+            # Transcribe with Whisper API
+            client = OpenAI(api_key=api_key)
+            
+            with open(audio_file, "rb") as audio:
+                transcription = client.audio.transcriptions.create(
+                    model=model,
+                    file=audio,
+                    response_format="text"
+                )
+            
+            # Clean up temporary file
+            import os
+            os.remove(audio_file)
+            
+            self.logger.info(f"Whisper transcription successful: {transcription[:50]}...")
+            return transcription
+            
+        except Exception as e:
+            self.logger.error(f"Whisper transcription error: {e}")
+            return None
+    
+    def record_audio_to_file(self, duration=5, filename="temp_audio.wav"):
+        """Record audio and save to file for Whisper API"""
+        try:
+            self.logger.info(f"Recording audio to file for {duration} seconds...")
+            
+            # Record audio
+            stream = self.audio.open(format=self.format,
+                                   channels=self.channels,
+                                   rate=self.rate,
+                                   input=True,
+                                   frames_per_buffer=self.chunk)
+            
+            frames = []
+            for _ in range(0, int(self.rate / self.chunk * duration)):
+                data = stream.read(self.chunk)
+                frames.append(data)
+            
+            stream.stop_stream()
+            stream.close()
+            
+            # Save to file
+            wf = wave.open(filename, 'wb')
+            wf.setnchannels(self.channels)
+            wf.setsampwidth(self.audio.get_sample_size(self.format))
+            wf.setframerate(self.rate)
+            wf.writeframes(b''.join(frames))
+            wf.close()
+            
+            self.logger.info("Audio recorded and saved to file successfully")
+            return filename
+            
+        except Exception as e:
+            self.logger.error(f"Audio file recording error: {e}")
+            return None
+    
+    def record_and_transcribe_with_gemini(self, duration=5, gemini_client=None, model="gemini-1.5-flash", prompt="Please transcribe this audio accurately. If it sounds like a question, provide the exact question being asked."):
+        """Complete workflow: record audio and transcribe with Gemini"""
+        try:
+            # Record audio to file for Gemini
+            audio_file = self.record_audio_to_file(duration, "temp_gemini_audio.wav")
+            if not audio_file:
+                return None
+            
+            # Transcribe with Gemini
+            if gemini_client:
+                transcription = gemini_client.transcribe_audio(audio_file, model, prompt)
+                
+                # Clean up temporary file
+                import os
+                if os.path.exists(audio_file):
+                    os.remove(audio_file)
+                
+                return transcription
+            else:
+                return "Error: No Gemini client provided"
+                
+        except Exception as e:
+            self.logger.error(f"Gemini audio recording error: {e}")
+            return None
+    
+    def record_audio_raw(self, duration=5):
+        """Record raw audio data for Gemini transcription"""
+        try:
+            self.logger.info(f"Recording audio for {duration} seconds...")
+            
+            # Record audio
+            stream = self.audio.open(format=self.format,
+                                   channels=self.channels,
+                                   rate=self.rate,
+                                   input=True,
+                                   frames_per_buffer=self.chunk)
+            
+            frames = []
+            for _ in range(0, int(self.rate / self.chunk * duration)):
+                data = stream.read(self.chunk)
+                frames.append(data)
+            
+            stream.stop_stream()
+            stream.close()
+            
+            # Convert to bytes
+            audio_data = b''.join(frames)
+            self.logger.info("Audio recorded successfully")
+            return audio_data
+            
+        except Exception as e:
+            self.logger.error(f"Raw audio recording error: {e}")
+            return None
         
     def cleanup(self):
         """Clean up audio resources"""

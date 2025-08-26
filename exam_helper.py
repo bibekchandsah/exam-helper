@@ -89,6 +89,7 @@ class ExamHelper:
                 'working_models': [],
                 'working_gemini_models': [],
                 'selected_image_model': 'OpenAI GPT-4o',  # Default image recognition model
+                'selected_audio_model': 'OpenAI Whisper-1',  # Default audio recognition model
                 'use_custom_prompt': False,  # Whether to use custom prompt or hardcoded prompt
                 'custom_image_prompt': "What's in this image? Please analyze and describe what you see.",  # Default prompt
                 'audio_record_duration': '10s'  # OpenAI audio recording duration
@@ -327,14 +328,14 @@ class ExamHelper:
                                   command=self.toggle_audio_scanning, **button_style)
         self.audio_btn.pack(side=tk.LEFT, padx=(0, 4))
         
-        # OpenAI Audio Record button
-        self.openai_audio_btn = tk.Button(control_row, text="🎙️ Record", 
+        # Audio Record button
+        self.audio_record_btn = tk.Button(control_row, text="🎙️ Record", 
                                          bg=self.colors['success'], 
                                          fg='white',
                                          activebackground='#45a049',
                                          activeforeground='white',
-                                         command=self.record_openai_audio, **button_style)
-        self.openai_audio_btn.pack(side=tk.LEFT, padx=(0, 4))
+                                         command=self.record_audio_with_ai, **button_style)
+        self.audio_record_btn.pack(side=tk.LEFT, padx=(0, 4))
         
         # Duration selection dropdown
         self.record_duration_var = tk.StringVar(value=self.config.get('audio_record_duration', '10s'))
@@ -412,7 +413,7 @@ class ExamHelper:
         
         # Left column - Image Recognition Model
         image_model_frame = tk.Frame(model_selector_frame, bg=self.colors['bg_secondary'])
-        image_model_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        image_model_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
         
         image_model_label = tk.Label(image_model_frame, text="📸 Image Recognition Model", 
                                     font=('Segoe UI', 9, 'bold'),
@@ -453,6 +454,47 @@ class ExamHelper:
                                                fg=self.colors['success'], 
                                                bg=self.colors['bg_secondary'])
         self.image_model_status_label.pack(side=tk.LEFT)
+        
+        # Middle column - Audio Recognition Model
+        audio_model_frame = tk.Frame(model_selector_frame, bg=self.colors['bg_secondary'])
+        audio_model_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        
+        audio_model_label = tk.Label(audio_model_frame, text="🎙️ Audio Recognition Model", 
+                                    font=('Segoe UI', 9, 'bold'),
+                                    fg=self.colors['text_secondary'], 
+                                    bg=self.colors['bg_secondary'])
+        audio_model_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Available audio models
+        self.audio_models = {
+            'OpenAI Whisper-1': 'openai_whisper1',
+            'OpenAI GPT-4o-transcribe': 'openai_gpt4o_transcribe',
+            'OpenAI GPT-4o-mini-transcribe': 'openai_gpt4o_mini_transcribe',
+            'Gemini 2.5 Pro': 'gemini_2_5_pro',
+            'Gemini 2.5 Flash': 'gemini_2_5_flash'
+        }
+        
+        audio_combo_frame = tk.Frame(audio_model_frame, bg=self.colors['bg_secondary'])
+        audio_combo_frame.pack(fill=tk.X)
+        
+        self.selected_audio_model = tk.StringVar(value=self.config.get('selected_audio_model', 'OpenAI Whisper-1'))
+        self.audio_model_combo = ttk.Combobox(
+            audio_combo_frame,
+            textvariable=self.selected_audio_model,
+            values=list(self.audio_models.keys()),
+            state='readonly',
+            style='Modern.TCombobox',
+            font=('Segoe UI', 9),
+            width=22
+        )
+        self.audio_model_combo.pack(side=tk.LEFT, padx=(0, 8))
+        
+        # Audio model status indicator
+        self.audio_model_status_label = tk.Label(audio_combo_frame, text="✅ Ready", 
+                                               font=('Segoe UI', 8),
+                                               fg=self.colors['success'], 
+                                               bg=self.colors['bg_secondary'])
+        self.audio_model_status_label.pack(side=tk.LEFT)
         
         # Right column - AI Response Model
         response_model_frame = tk.Frame(model_selector_frame, bg=self.colors['bg_secondary'])
@@ -512,6 +554,7 @@ class ExamHelper:
         
         # Bind model selection changes
         self.image_model_combo.bind('<<ComboboxSelected>>', self.on_image_model_change)
+        self.audio_model_combo.bind('<<ComboboxSelected>>', self.on_audio_model_change)
         self.response_model_combo.bind('<<ComboboxSelected>>', self.on_response_model_change)
         
         # Modern manual input section
@@ -1154,11 +1197,15 @@ class ExamHelper:
             self.question_queue.put(('Manual', question))
             self.manual_input.delete("1.0", tk.END)
             
-    def record_openai_audio(self):
-        """Record audio and transcribe with OpenAI, then show in input box"""
-        # Check if OpenAI API key is configured
-        if not self.config.get('openai_api_key'):
+    def record_audio_with_ai(self):
+        """Record audio and transcribe with selected AI model, then show in input box"""
+        # Check if appropriate API key is configured based on selected model
+        selected_audio_model = self.config.get('selected_audio_model', 'OpenAI Whisper-1')
+        if selected_audio_model.startswith('OpenAI') and not self.config.get('openai_api_key'):
             messagebox.showwarning("API Error", "OpenAI API key is not configured.\nPlease set your API key in settings.")
+            return
+        elif selected_audio_model.startswith('Gemini') and not self.config.get('gemini_api_key'):
+            messagebox.showwarning("API Error", "Gemini API key is not configured.\nPlease set your API key in settings.")
             return
             
         # Get selected duration
@@ -1166,27 +1213,79 @@ class ExamHelper:
         duration = int(duration_str.replace('s', ''))
         
         # Disable button and show recording status
-        self.openai_audio_btn.config(text="🔴 Recording...", state='disabled')
+        self.audio_record_btn.config(text="🔴 Recording...", state='disabled')
         self.update_status(f"Recording audio for {duration} seconds...")
         
         # Run recording in separate thread to avoid blocking UI
-        recording_thread = threading.Thread(target=self._perform_openai_audio_recording, daemon=True)
+        recording_thread = threading.Thread(target=self._perform_ai_audio_recording, daemon=True)
         recording_thread.start()
         
-    def _perform_openai_audio_recording(self):
-        """Perform the actual OpenAI audio recording and transcription"""
+    def _perform_ai_audio_recording(self):
+        """Perform the actual audio recording and transcription using selected model"""
         try:
-            # Get selected duration
+            # Get selected duration and model
             duration_str = self.config.get('audio_record_duration', '10s')
             duration = int(duration_str.replace('s', ''))
+            selected_audio_model = self.config.get('selected_audio_model', 'OpenAI Whisper-1')
             
-            # Record and transcribe with OpenAI
-            api_key = self.config.get('openai_api_key')
-            transcription = self.audio_capture.record_and_transcribe_with_openai(
-                duration=duration, 
-                api_key=api_key,
-                prompt="Please transcribe this audio accurately. If it sounds like a question, provide the exact question being asked."
-            )
+            # Check which model is selected and use appropriate transcription
+            if selected_audio_model.startswith('OpenAI'):
+                # Use OpenAI models
+                api_key = self.config.get('openai_api_key')
+                if not api_key:
+                    self.root.after(0, lambda: self.update_status("Error: OpenAI API key not configured"))
+                    return
+                
+                # Map display name to actual model name
+                model_mapping = {
+                    'OpenAI Whisper-1': 'whisper-1',
+                    'OpenAI GPT-4o-transcribe': 'gpt-4o-audio-preview',
+                    'OpenAI GPT-4o-mini-transcribe': 'gpt-4o-mini-audio-preview'
+                }
+                
+                actual_model = model_mapping.get(selected_audio_model, 'gpt-4o-audio-preview')
+                
+                # Use different methods based on model type
+                if selected_audio_model == 'OpenAI Whisper-1':
+                    # Use traditional Whisper API
+                    transcription = self.audio_capture.record_and_transcribe_with_whisper(
+                        duration=duration, 
+                        api_key=api_key,
+                        model='whisper-1'
+                    )
+                else:
+                    # Use GPT-4o audio models
+                    transcription = self.audio_capture.record_and_transcribe_with_openai(
+                        duration=duration, 
+                        api_key=api_key,
+                        model=actual_model,
+                        prompt="Please transcribe this audio accurately. If it sounds like a question, provide the exact question being asked."
+                    )
+                    
+            elif selected_audio_model.startswith('Gemini'):
+                # Use Gemini models
+                api_key = self.config.get('gemini_api_key')
+                if not api_key:
+                    self.root.after(0, lambda: self.update_status("Error: Gemini API key not configured"))
+                    return
+                
+                # Map display name to actual model name
+                model_mapping = {
+                    'Gemini 2.5 Pro': 'gemini-2.5-pro',
+                    'Gemini 2.5 Flash': 'gemini-1.5-flash'
+                }
+                
+                actual_model = model_mapping.get(selected_audio_model, 'gemini-1.5-flash')
+                
+                transcription = self.audio_capture.record_and_transcribe_with_gemini(
+                    duration=duration,
+                    gemini_client=self.gemini_client,
+                    model=actual_model,
+                    prompt="Please transcribe this audio accurately. If it sounds like a question, provide the exact question being asked."
+                )
+            else:
+                self.root.after(0, lambda: self.update_status("Error: Unknown audio model selected"))
+                return
             
             if transcription:
                 # Show transcription in the input box for user to modify
@@ -1201,7 +1300,7 @@ class ExamHelper:
             
         finally:
             # Re-enable button
-            self.root.after(0, lambda: self.openai_audio_btn.config(text="🎙️ Record", state='normal'))
+            self.root.after(0, lambda: self.audio_record_btn.config(text="🎙️ Record", state='normal'))
             
     def _show_transcription_in_input(self, transcription):
         """Show the transcription in the manual input box"""
@@ -1523,6 +1622,29 @@ class ExamHelper:
         
         self.logger.info(f"Image model changed to: {selected_model}")
     
+    def on_audio_model_change(self, event=None):
+        """Handle audio model selection change"""
+        selected_model = self.selected_audio_model.get()
+        model_key = self.audio_models.get(selected_model)
+        
+        # Update model status based on API key availability
+        if model_key.startswith('openai'):
+            if self.config.get('openai_api_key'):
+                self.audio_model_status_label.config(text="✅ Ready", fg=self.colors['success'])
+            else:
+                self.audio_model_status_label.config(text="❌ No API Key", fg=self.colors['error'])
+        elif model_key.startswith('gemini'):
+            if self.config.get('gemini_api_key'):
+                self.audio_model_status_label.config(text="✅ Ready", fg=self.colors['success'])
+            else:
+                self.audio_model_status_label.config(text="❌ No API Key", fg=self.colors['error'])
+        
+        # Save config
+        self.config['selected_audio_model'] = selected_model
+        self.save_config()
+        
+        self.logger.info(f"Audio model changed to: {selected_model}")
+    
     def on_response_model_change(self, event=None):
         """Handle AI response model selection change"""
         selected_model = self.selected_response_model.get()
@@ -1567,6 +1689,20 @@ class ExamHelper:
         self.config['audio_record_duration'] = duration_str
         self.save_config()
         self.logger.info(f"Recording duration changed to: {duration_str}")
+    
+    def update_all_model_status_indicators(self):
+        """Update all model status indicators based on current API key availability"""
+        # Update image model status
+        if hasattr(self, 'selected_image_model'):
+            self.on_image_model_change()
+        
+        # Update audio model status
+        if hasattr(self, 'selected_audio_model'):
+            self.on_audio_model_change()
+        
+        # Update response model status
+        if hasattr(self, 'selected_response_model'):
+            self.on_response_model_change()
     
     def start_audio_visualization(self):
         """Start the audio visualization display"""
@@ -1928,7 +2064,7 @@ You are an **exam-solving and coding assistant**. Your job is to analyze images 
         
     def open_settings(self):
         """Open settings window"""
-        settings_window = SettingsWindow(self.root, self.config, self.save_config)
+        settings_window = SettingsWindow(self.root, self.config, self.save_config, self)
         
     def show_shortcuts(self):
         """Show keyboard shortcuts window"""
@@ -2009,9 +2145,10 @@ You are an **exam-solving and coding assistant**. Your job is to analyze images 
 
 
 class SettingsWindow:
-    def __init__(self, parent, config, save_callback):
+    def __init__(self, parent, config, save_callback, main_app=None):
         self.config = config
         self.save_callback = save_callback
+        self.parent = main_app
         
         self.window = tk.Toplevel(parent)
         self.window.title("Settings")
@@ -2466,6 +2603,9 @@ class SettingsWindow:
             self.config['custom_image_prompt'] = self.custom_prompt_text.get('1.0', tk.END).strip()
             
             self.save_callback()
+            # Update model status indicators after saving
+            if hasattr(self, 'parent') and hasattr(self.parent, 'update_all_model_status_indicators'):
+                self.parent.update_all_model_status_indicators()
             messagebox.showinfo("Settings", "Settings saved successfully!")
             self.window.destroy()
             

@@ -244,6 +244,41 @@ Present the extracted text in a clear, organized format."""
                 self.logger.error(f"Gemini OCR error: {e}")
                 return f"Error extracting text: {str(e)}"
     
+    def transcribe_audio(self, audio_file_path, model="gemini-1.5-flash", prompt="Please transcribe this audio accurately. If it sounds like a question, provide the exact question being asked."):
+        """Transcribe audio using Gemini"""
+        try:
+            # Rate limiting
+            current_time = time.time()
+            if current_time - self.last_request_time < self.min_request_interval:
+                time.sleep(self.min_request_interval - (current_time - self.last_request_time))
+            
+            # Create model instance for the specific model
+            if model == "gemini-2.5-pro":
+                transcribe_model = genai.GenerativeModel('gemini-2.0-flash-exp')  # Using available model
+            else:
+                transcribe_model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            # Upload audio file to Gemini
+            audio_file = genai.upload_file(path=audio_file_path, mime_type="audio/wav")
+            
+            # Prepare content for Gemini
+            response = transcribe_model.generate_content([
+                prompt,
+                audio_file
+            ])
+            
+            self.last_request_time = time.time()
+            
+            if response.text:
+                self.logger.info(f"Gemini audio transcription successful: {response.text[:50]}...")
+                return response.text.strip()
+            else:
+                return "Error: No transcription generated from Gemini API"
+                
+        except Exception as e:
+            self.logger.error(f"Gemini audio transcription error: {e}")
+            return f"Error: Gemini audio transcription not fully supported yet. Please try OpenAI models. ({str(e)})"
+    
     def get_model_info(self):
         """Get information about current models"""
         return {

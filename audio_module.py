@@ -7,6 +7,10 @@ import time
 import logging
 import numpy as np
 from collections import deque
+import base64
+import io
+import requests
+from openai import OpenAI
 
 class AudioCapture:
     def __init__(self):
@@ -350,6 +354,102 @@ class AudioCapture:
             return None
             
         return None
+    
+    def record_audio_for_openai(self, duration=5, api_key=None):
+        """Record audio and prepare it for OpenAI audio API"""
+        if not api_key:
+            self.logger.error("OpenAI API key required for audio processing")
+            return None
+            
+        try:
+            # Record audio
+            self.logger.info(f"Recording audio for {duration} seconds...")
+            
+            # Use PyAudio to record
+            stream = self.audio.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.rate,
+                input=True,
+                frames_per_buffer=self.chunk
+            )
+            
+            frames = []
+            for _ in range(0, int(self.rate / self.chunk * duration)):
+                data = stream.read(self.chunk, exception_on_overflow=False)
+                frames.append(data)
+            
+            stream.stop_stream()
+            stream.close()
+            
+            # Convert to WAV format in memory
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, 'wb') as wav_file:
+                wav_file.setnchannels(self.channels)
+                wav_file.setsampwidth(self.audio.get_sample_size(self.format))
+                wav_file.setframerate(self.rate)
+                wav_file.writeframes(b''.join(frames))
+            
+            # Get WAV data
+            wav_data = wav_buffer.getvalue()
+            wav_buffer.close()
+            
+            # Encode to base64
+            encoded_audio = base64.b64encode(wav_data).decode('utf-8')
+            
+            self.logger.info("Audio recorded and encoded successfully")
+            return encoded_audio
+            
+        except Exception as e:
+            self.logger.error(f"Audio recording error: {e}")
+            return None
+    
+    def transcribe_with_openai_audio(self, encoded_audio, api_key, prompt="What is being said in this audio recording? Please transcribe it accurately."):
+        """Send audio to OpenAI audio model for transcription"""
+        try:
+            client = OpenAI(api_key=api_key)
+            
+            completion = client.chat.completions.create(
+                model="gpt-4o-audio-preview",
+                modalities=["text"],  # Only text response needed for transcription
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": prompt
+                            },
+                            {
+                                "type": "input_audio",
+                                "input_audio": {
+                                    "data": encoded_audio,
+                                    "format": "wav"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            )
+            
+            transcription = completion.choices[0].message.content
+            self.logger.info(f"OpenAI audio transcription successful: {transcription[:50]}...")
+            return transcription
+            
+        except Exception as e:
+            self.logger.error(f"OpenAI audio transcription error: {e}")
+            return None
+    
+    def record_and_transcribe_with_openai(self, duration=5, api_key=None, prompt="What is being said in this audio recording? Please transcribe it accurately."):
+        """Complete workflow: record audio and transcribe with OpenAI"""
+        # Record audio
+        encoded_audio = self.record_audio_for_openai(duration, api_key)
+        if not encoded_audio:
+            return None
+            
+        # Transcribe with OpenAI
+        transcription = self.transcribe_with_openai_audio(encoded_audio, api_key, prompt)
+        return transcription
         
     def cleanup(self):
         """Clean up audio resources"""

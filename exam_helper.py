@@ -326,6 +326,15 @@ class ExamHelper:
                                   command=self.toggle_audio_scanning, **button_style)
         self.audio_btn.pack(side=tk.LEFT, padx=(0, 4))
         
+        # OpenAI Audio Record button
+        self.openai_audio_btn = tk.Button(control_row, text="🎙️ Record", 
+                                         bg=self.colors['success'], 
+                                         fg='white',
+                                         activebackground='#45a049',
+                                         activeforeground='white',
+                                         command=self.record_openai_audio, **button_style)
+        self.openai_audio_btn.pack(side=tk.LEFT, padx=(0, 4))
+        
         # Capture Screen button (merged functionality)
         self.capture_btn = tk.Button(control_row, text="📸 Capture Screen", 
                                     bg=self.colors['accent'], 
@@ -600,7 +609,7 @@ class ExamHelper:
             widget.bind('<Leave>', on_leave)
         
         # Add tooltip to info button
-        create_tooltip(info_btn, "Enter = Submit Question\nShift+Enter = New Line")
+        create_tooltip(info_btn, "Enter = Submit Question\nShift+Enter = New Line\n🎙️ Record = Voice to text with OpenAI")
         
         # Modern text input with rounded appearance
         input_container = tk.Frame(input_section, bg=self.colors['bg_tertiary'], relief='flat', bd=0)
@@ -1135,6 +1144,64 @@ class ExamHelper:
         if question:
             self.question_queue.put(('Manual', question))
             self.manual_input.delete("1.0", tk.END)
+            
+    def record_openai_audio(self):
+        """Record audio and transcribe with OpenAI, then show in input box"""
+        # Check if OpenAI API key is configured
+        if not self.config.get('openai_api_key'):
+            messagebox.showwarning("API Error", "OpenAI API key is not configured.\nPlease set your API key in settings.")
+            return
+            
+        # Disable button and show recording status
+        self.openai_audio_btn.config(text="🔴 Recording...", state='disabled')
+        self.update_status("Recording audio for 5 seconds...")
+        
+        # Run recording in separate thread to avoid blocking UI
+        recording_thread = threading.Thread(target=self._perform_openai_audio_recording, daemon=True)
+        recording_thread.start()
+        
+    def _perform_openai_audio_recording(self):
+        """Perform the actual OpenAI audio recording and transcription"""
+        try:
+            # Record and transcribe with OpenAI
+            api_key = self.config.get('openai_api_key')
+            transcription = self.audio_capture.record_and_transcribe_with_openai(
+                duration=5, 
+                api_key=api_key,
+                prompt="Please transcribe this audio accurately. If it sounds like a question, provide the exact question being asked."
+            )
+            
+            if transcription:
+                # Show transcription in the input box for user to modify
+                self.root.after(0, lambda: self._show_transcription_in_input(transcription))
+                self.root.after(0, lambda: self.update_status("Audio transcribed successfully - check input box"))
+            else:
+                self.root.after(0, lambda: self.update_status("Failed to transcribe audio"))
+                
+        except Exception as e:
+            self.logger.error(f"OpenAI audio recording error: {e}")
+            self.root.after(0, lambda: self.update_status("Audio recording failed"))
+            
+        finally:
+            # Re-enable button
+            self.root.after(0, lambda: self.openai_audio_btn.config(text="🎙️ Record", state='normal'))
+            
+    def _show_transcription_in_input(self, transcription):
+        """Show the transcription in the manual input box"""
+        # Clear current input
+        self.manual_input.delete("1.0", tk.END)
+        
+        # Insert transcription
+        self.manual_input.insert("1.0", transcription)
+        
+        # Focus on the input box so user can edit
+        self.manual_input.focus_set()
+        
+        # Select all text for easy editing
+        self.manual_input.tag_add(tk.SEL, "1.0", tk.END)
+        
+        # Show a brief notification
+        self.update_status("Transcription ready - edit and press Enter to ask")
             
     def _add_to_answer_display(self, text):
         """Helper method to safely add text to read-only answer display"""

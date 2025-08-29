@@ -2,7 +2,7 @@ __pycache__/
 .kiro
 config.json
 exam_helper.log
-idea.txt
+# idea.txt
 build
 dist
 ExamHelper_Distribution

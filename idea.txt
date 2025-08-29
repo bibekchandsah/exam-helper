@@ -1,0 +1,97 @@
+Create a Python-based floating GUI application that works as an exam helper and personal assistant. The application should:
+Capture text questions from the entire screen using OCR.
+Capture audio questions from both system audio (speaker output) and microphone input.
+Use my provided API key to query an LLM for answers.
+Display the answers in the floating GUI, with an option to switch between short, direct responses and detailed explanations.
+Include a manual input box for typing custom questions.
+Run in stealth mode — the GUI should remain fully visible to the user but hidden from screen-sharing applications (e.g., Zoom, Google Meet).
+Allow toggling visibility, so the app can stay floating but not interfere with other tasks.
+Add a quick toggle (keyboard shortcut like Ctrl+Shift+H) to hide/unhide the GUI instantly.
+the program continuously scan the screen/audio automatically
+
+
+
+
+
+
+
+=== Git Commands Used for Repository Setup ===
+
+# Initial setup when local directory is not a Git repository
+git init                                                    # Initialize empty Git repository
+git remote add origin https://github.com/bibekchandsah/exam-helper.git  # Add remote repository
+git add .                                                   # Stage all files
+git commit -m "Initial commit with local files"            # Commit local files
+
+# Fetch and merge remote changes (when remote has files uploaded manually)
+git fetch origin                                            # Download remote changes
+git branch                                                  # Check current branch
+git checkout -b main                                        # Create and switch to main branch
+git merge origin/main --allow-unrelated-histories          # Merge remote with local (allows unrelated histories)
+
+# Resolve merge conflicts (keep local versions)
+git status                                                  # Check merge conflict status
+git checkout --ours .                                       # Keep local versions for all conflicts
+git add .                                                   # Stage resolved conflicts
+git commit -m "Merge remote changes, keeping local versions"  # Commit merge resolution
+
+# Push to remote repository
+git push origin main                                        # Push local changes to GitHub
+
+# Common Git workflow for future use:
+git add .                                                   # Stage changes
+git commit -m "your commit message"                        # Commit changes
+git push origin main                                        # Push to remote
+git pull origin main                                        # Pull latest changes from remote
+
+# Remove already committed files from Git tracking (when added to .gitignore later)
+git rm -r --cached __pycache__                             # Remove __pycache__ from Git tracking (keeps local files)
+git rm -r --cached filename                                # Remove specific file from Git tracking
+git add .gitignore                                         # Stage updated .gitignore file
+git commit -m "Remove __pycache__ from repository and update .gitignore"  # Commit the removal
+git push origin main                                       # Push changes to remove from remote repository
+
+
+
+
+
+
+https://www.bibekchandsah.com.np/
+
+
+
+
+build the application
+---------------------------------------
+Build Options (Choose One):
+
+1. Advanced Build (Recommended)
+Run:- python build_exe.py
+    - Real-time progress tracking
+    - Optimized compression
+    - Creates clean distribution folder
+    - Includes all your modules automatically
+
+2. Simple One-Click Build
+Run:- build_simple.bat
+    - Double-click to run
+    - Quick and straightforward
+    - All modules included
+
+3. Manual PyInstaller
+Use the command from the BUILD_GUIDE.md for full control
+
+4. Find your executable in the ExamHelper_Distribution folder
+
+
+
+
+
+arrange window size 
+build_simple taking longer time with huge app size
+build_optimize takes less time with less app size (8min)
+build_executable > quick build takes 11m with bit more app size than build_optimize (2)
+build_executable > full build takes 15m with bit more app size than build_optimize (1)
+build > quick build takes 17m with bit more app size than build_optimize (2)
+build > full build takes 10m with bit more app size than build_optimize (1)
+

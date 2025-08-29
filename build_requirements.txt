@@ -1,0 +1,3 @@
+# Additional requirements for building executable
+pyinstaller>=5.0.0
+auto-py-to-exe>=2.20.0  # Optional GUI alternative

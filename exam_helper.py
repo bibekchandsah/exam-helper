@@ -199,8 +199,8 @@ class ExamHelper:
             self.logger.warning(f"Could not load icon: {e}")
         
         # Set window size and center it
-        window_width = 735
-        window_height = 840
+        window_width = 835
+        window_height = 945
         self.center_window(self.root, window_width, window_height)
         
         # Modern dark theme colors
@@ -2218,7 +2218,7 @@ class SettingsWindow:
             pass  # Icon loading failed, continue without icon
         
         # Center the window
-        self.center_window(680, 690)
+        self.center_window(690, 755)
         
         self.window.transient(parent)
         self.window.grab_set()

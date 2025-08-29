@@ -268,23 +268,42 @@ def create_distribution_folder():
         print("✗ Executable not found in dist folder")
         return False
     
+    # Copy preview image if it exists
+    preview_path = Path("preview.png")
+    if preview_path.exists():
+        shutil.copy2(preview_path, dist_folder / "preview.png")
+        print(f"✓ Copied preview image to {dist_folder}")
+    
+    # Copy icon if it exists
+    icon_path = Path("icon.png")
+    if icon_path.exists():
+        shutil.copy2(icon_path, dist_folder / "icon.png")
+        print(f"✓ Copied icon to {dist_folder}")
+    
     # Create README for distribution
     readme_content = """# Exam Helper - Standalone Application
+
+![Exam Helper Preview](preview.png)
 
 ## Installation
 1. Extract all files to a folder of your choice
 2. Run ExamHelper.exe
+3. Configure your API keys in the settings
 
 ## Requirements
-- Windows 10/11
+- Windows 10/11 (64-bit)
 - No additional software installation required (all dependencies are bundled)
+- Internet connection for AI services
+- API keys for OpenAI, Google Gemini, or Perplexity (optional)
 
 ## Features
-- Screen capture and OCR
-- Live screen monitoring
-- Audio recording and transcription
-- AI-powered question answering
-- Multiple AI model support (OpenAI, Gemini, Perplexity)
+- 🎨 Modern dark theme interface
+- 📸 Screen capture and OCR text extraction
+- 🔴 Live screen monitoring
+- 🎙️ Audio recording and transcription
+- 🤖 AI-powered question answering
+- 👻 Stealth mode (invisible to screen sharing)
+- ⚡ Multiple AI model support (OpenAI, Gemini, Perplexity)
 
 ## Configuration
 The application will create a config.json file on first run where you can:

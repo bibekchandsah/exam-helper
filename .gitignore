@@ -3,8 +3,7 @@ __pycache__/
 config.json
 exam_helper.log
 idea.txt
-voice_translator.py
 build
 dist
 ExamHelper_Distribution
-
+testing/build

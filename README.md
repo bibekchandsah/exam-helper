@@ -2,6 +2,20 @@
 
 A Python-based floating GUI application that works as an intelligent exam helper and personal assistant. The application captures questions from screen text (OCR) and audio input, then provides AI-powered answers using OpenAI's GPT models.
 
+## 📸 Application Preview
+
+![Exam Helper Preview](preview.png)
+
+*Modern, sleek interface with dark theme and intuitive controls*
+
+## ✨ Key Highlights
+
+- **🎨 Modern Dark UI**: Sleek, professional interface with smooth animations
+- **🤖 Multi-AI Support**: OpenAI GPT, Google Gemini, and Perplexity integration
+- **👻 Stealth Mode**: Invisible to screen sharing (Zoom, Teams, etc.)
+- **📸 Smart Capture**: OCR, audio recording, and live screen monitoring
+- **⚡ Real-time Processing**: Instant AI responses with progress indicators
+
 ## Features
 
 ### 🔍 Question Capture
@@ -24,17 +38,26 @@ A Python-based floating GUI application that works as an intelligent exam helper
 - **Click-through Mode**: Optional mouse event pass-through
 
 ### ⌨️ User Interface
+- **Modern Dark Theme**: Professional appearance with smooth gradients
 - **Floating Window**: Always-on-top, resizable interface (toggleable)
+- **Model Selection**: Choose between different AI models for different tasks
 - **Quick Toggle**: Ctrl+Shift+H hotkey to hide/show instantly
 - **Screenshot Vision**: Ctrl+Shift+C hotkey for instant screenshot capture and AI analysis
-- **Real-time Display**: Live answer updates with timestamps
+- **Real-time Display**: Live answer updates with timestamps and status indicators
 - **Settings Panel**: Easy configuration of API keys and preferences
-- **Always on Top**: Checkbox to toggle window staying on top
-- **Always on Top**: Checkbox to toggle window staying on top
+- **Progress Tracking**: Visual feedback for all operations
 
-## Installation
+## 🚀 Quick Start
 
-### Prerequisites
+### Option 1: Download Executable (Recommended)
+1. Download the latest release from the releases page
+2. Extract `ExamHelper.exe` from the zip file
+3. Run `ExamHelper.exe` - no installation required!
+4. Configure your API keys in the settings
+
+### Option 2: Build from Source
+
+#### Prerequisites
 1. **Python 3.8+** installed on your system
 2. **Tesseract OCR** for text recognition
 3. **OpenAI API Key** for AI responses
@@ -69,10 +92,38 @@ sudo apt-get install tesseract-ocr
 
 ### Step 3: Configure API Keys
 1. Run the application: `python exam_helper.py`
-2. Click "Settings" button
-3. Enter your OpenAI API key (for text questions)
-4. Enter your Perplexity API key (for image analysis)
+2. The application will create a `config.json` file automatically
+3. Use the model selection dropdowns to choose your preferred AI models:
+   - **Image Recognition**: OpenAI GPT-4o, Gemini Pro Vision, etc.
+   - **Audio Recognition**: OpenAI Whisper, Gemini models
+   - **AI Response**: OpenAI GPT models, Gemini Flash/Pro
+4. Enter your API keys in the configuration file or through the interface
 5. Adjust other preferences as needed
+
+### 🔧 Building Executable
+
+To create your own standalone executable:
+
+```bash
+# Method 1: Advanced build with progress tracking
+python build_exe.py
+
+# Method 2: Simple one-click build (takes long time with large application size)
+build_simple.bat
+
+# Method 3: Simple one-click build (takes less time with less application size)
+build_optimize.bat
+
+# Method 4: almost same time with same size application
+build_executable.bat
+build.bat
+
+# Method 5: Manual PyInstaller
+pyinstaller --onefile --windowed exam_helper.py
+```
+
+
+See `BUILD_GUIDE.md` for detailed build instructions.
 
 ## Usage
 
@@ -115,18 +166,24 @@ python exam_helper.py
 - **ocr_enabled**: Enable/disable screen text capture
 - **response_mode**: "short" for brief answers, "detailed" for explanations
 
-## File Structure
+## 📁 File Structure
 
 ```
 exam_helper/
-├── exam_helper.py          # Main application
-├── ocr_module.py          # Screen text capture
-├── audio_module.py        # Audio input handling
+├── exam_helper.py          # Main application with modern GUI
+├── ocr_module.py          # Screen text capture and OCR
+├── audio_module.py        # Audio input and speech recognition
 ├── llm_module.py          # OpenAI API integration
+├── gemini_module.py       # Google Gemini AI integration
+├── perplexity_module.py   # Perplexity AI integration
 ├── stealth_module.py      # Stealth mode functionality
-├── config.json            # Configuration file
+├── screenshot_module.py   # Screenshot capture utilities
+├── config.json            # Configuration file (auto-generated)
 ├── requirements.txt       # Python dependencies
-├── install_dependencies.py # Installation script
+├── build_exe.py          # Advanced executable builder
+├── build_simple.bat      # Simple build script
+├── BUILD_GUIDE.md        # Detailed build instructions
+├── preview.png           # Application screenshot
 └── README.md             # This file
 ```
 
@@ -148,9 +205,12 @@ exam_helper/
 - Layered window attributes for transparency control
 
 ### AI Integration
-- OpenAI GPT-3.5-turbo for question answering
-- Rate limiting to prevent API abuse
-- Error handling for network and API issues
+- **Multi-Provider Support**: OpenAI GPT models, Google Gemini, Perplexity
+- **Model Selection**: Choose optimal models for different tasks
+- **Smart Routing**: Automatic model selection based on question type
+- **Rate limiting**: Prevents API abuse and manages costs
+- **Error handling**: Robust network and API error recovery
+- **Status Indicators**: Real-time model availability and health checks
 
 ## Troubleshooting
 
